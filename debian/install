@@ -1,0 +1,7 @@
+out/usr/bin/usdtmore /usr/bin/
+out/etc/usdtmore.conf /etc/
+out/etc/nginx/sites-available/usdtmore.conf /etc/nginx/sites-available/
+out/usr/lib/systemd/system/usdtmore.service /usr/lib/systemd/system/
+out/var/lib/usdtmore /var/lib
+out/var/log/usdtmore /var/log
+out/usr/share/usdtmore /usr/share

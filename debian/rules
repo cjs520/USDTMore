@@ -1,0 +1,70 @@
+#!/usr/bin/make -f
+
+# See debhelper(7) (uncomment to enable).
+# Output every command that modifies files on the build system.
+#export DH_VERBOSE = 1
+
+
+# See FEATURE AREAS in dpkg-buildflags(1).
+#export DEB_BUILD_MAINT_OPTIONS = hardening=+all
+
+# See ENVIRONMENT in dpkg-buildflags(1).
+# Package maintainers to append CFLAGS.
+#export DEB_CFLAGS_MAINT_APPEND  = -Wall -pedantic
+# Package maintainers to append LDFLAGS.
+#export DEB_LDFLAGS_MAINT_APPEND = -Wl,--as-needed
+
+export DEB_GAIN_ROOT_CMD = fakeroot
+export DESTDIR = out/
+
+%:
+	dh $@
+
+override_dh_auto_build:
+	# 使用 Go 编译二进制文件
+	CGO_ENABLED=0 go build -a -ldflags '-extldflags "-static"' -o usdtmore main/main.go
+
+override_dh_auto_install:
+	#mkdir $(DESTDIR)
+	# 安装编译好的二进制文件
+	echo $(DESTDIR)/usr/bin/usdtmore
+	$(DEB_GAIN_ROOT_CMD) install -D -m 0755 usdtmore $(DESTDIR)/usr/bin/usdtmore
+
+	$(DEB_GAIN_ROOT_CMD) install -d -m 777 -o usdt -g usdt $(DESTDIR)/var/lib/usdtmore/
+	$(DEB_GAIN_ROOT_CMD) install -d -m 777 -o usdt -g usdt $(DESTDIR)/var/log/usdtmore/
+	$(DEB_GAIN_ROOT_CMD) install -d -m 777 -o usdt -g usdt $(DESTDIR)/usr/share/usdtmore/
+
+	$(DEB_GAIN_ROOT_CMD) install -Dm644 "${CURDIR}/docs/usdtmore.conf" "$(DESTDIR)/etc/usdtmore.conf"
+	$(DEB_GAIN_ROOT_CMD) mkdir -p "$(DESTDIR)/etc/nginx/sites-available"
+	$(DEB_GAIN_ROOT_CMD) install -Dm644 "${CURDIR}/docs/nginx/usdtmore.conf" "$(DESTDIR)/etc/nginx/sites-available/usdtmore.conf"
+	$(DEB_GAIN_ROOT_CMD) install -Dm644 "${CURDIR}/docs/usdtmore.service" "$(DESTDIR)/usr/lib/systemd/system/usdtmore.service"
+
+	$(DEB_GAIN_ROOT_CMD) cp -rf "${CURDIR}/static/" "$(DESTDIR)/usr/share/usdtmore/"
+	$(DEB_GAIN_ROOT_CMD) cp -rf "${CURDIR}/templates/" "$(DESTDIR)/usr/share/usdtmore/"
+
+override_dh_fixperms:
+	dh_fixperms
+	$(DEB_GAIN_ROOT_CMD) chown -R usdt:usdt "$(DESTDIR)/var/lib/usdtmore"
+	$(DEB_GAIN_ROOT_CMD) chown -R usdt:usdt "$(DESTDIR)/var/log/usdtmore"
+	$(DEB_GAIN_ROOT_CMD) chown -R usdt:usdt "$(DESTDIR)/usr/share/usdtmore"
+
+override_dh_auto_clean:
+	# 调用构建系统的默认清理命令
+	dh_auto_clean
+
+	# 清理自定义缓存目录
+	rm -rf cache/
+	rm -rf tmp/
+	rm -rf build/
+
+	# 调用 dh_clean 清理 debhelper 生成的文件
+	dh_clean
+
+override_dh_dwz:
+	# Skip DWARF optimization
+
+# dh_make generated override targets.
+# This is an example for Cmake (see <https://bugs.debian.org/641051>).
+#override_dh_auto_configure:
+#	dh_auto_configure -- \
+#	-DCMAKE_LIBRARY_PATH=$(DEB_HOST_MULTIARCH)

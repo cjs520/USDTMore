@@ -1,0 +1,5 @@
+usdtmore (1.0.0-1) UNRELEASED; urgency=medium
+
+  * Initial release. (Closes: #nnnn)  <nnnn is the bug number of your ITP>
+
+ -- support <support@ovsea.net>  Wed, 28 Aug 2024 19:41:39 +0800

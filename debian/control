@@ -1,0 +1,20 @@
+Source: usdtmore
+Section: net
+Priority: optional
+Maintainer: support <support@ovsea.net>
+Rules-Requires-Root: include-binaries
+Build-Depends:
+ debhelper-compat (= 13),
+Standards-Version: 4.6.2
+Homepage: https://github.com/botinheart/USDTMore
+Vcs-Browser: https://github.com/botinheart/USDTMore
+Vcs-Git: https://github.com/botinheart/USDTMore.git
+
+Package: usdtmore
+Architecture: amd64
+Multi-Arch: foreign
+Depends:
+ ${shlibs:Depends},
+ ${misc:Depends},
+Description: USDT Payment Gateway for More Chain
+ A multi-link USDT payment gateway that queries on-chain information for callback notifications
