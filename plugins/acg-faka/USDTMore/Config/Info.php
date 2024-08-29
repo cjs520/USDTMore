@@ -4,7 +4,7 @@ declare (strict_types=1);
 return [
     'version' => '1.0.0',
     'name' => 'USDTMore',
-    'author' => '海内知己',
+    'author' => '森海北屿',
     'website' => 'https://ovsea.net',
     'description' => 'USDTMore，一款好用的多链路个人USDT收款网关',
     'options' => [

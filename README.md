@@ -21,6 +21,7 @@
 
 - ✅ 具备`Bepusdt`的所有特性，插件兼容无缝替换
 - ✅ 增加 `Polygon`, `Optimism`, `Bsc` 链的支持
+- ✅ 增加docker部署
 
 ## 🛠 参数配置
 
@@ -56,7 +57,7 @@ USDTMore 所有参数都是以传递环境变量的方式进行配置，大部�
 **特别提醒：上述参数必须设置的有`TG_BOT_TOKEN TG_BOT_ADMIN_ID`，否则无法使用！**
 
 ## 🚀 安装部署
-
+- [Docker 安装教程（强烈推荐🔥）](./docs/docker.md)
 - [https 配置教程](./docs/ssl.md)
 - [Linux 手动安装教程](./docs/systemd.md)
 - [Linux 时钟同步配置](./docs/systemd-timesyncd.md)
@@ -65,12 +66,12 @@ USDTMore 所有参数都是以传递环境变量的方式进行配置，大部�
 
 - [异次元](./plugins/acg-faka/README.md)
 - [独角数卡](./plugins/dujiaoka/README.md)
-  
+
 ## 🤔 常见问题
 
 ### 如何获取参数 TG_BOT_ADMIN_ID
 
-Telegram 搜索`@userinfobot`机器人并启用，返回的ID就是`TG_BOT_ADMIN_ID`
+Telegram 搜索`@myidbot`机器人并启用，`/getid`返回的ID就是`TG_BOT_ADMIN_ID`
 
 ### 如何申请`TronScan`和`TronGrid`的ApiKey
 
@@ -83,10 +84,11 @@ Telegram 搜索`@userinfobot`机器人并启用，返回的ID就是`TG_BOT_ADMIN
 - 部分功能依赖网络，请确保服务器网络纯洁性，否则可能导致功能异常！
 - 如果有问题，欢迎加入交流群交流 [USDTMore](https://t.me/usdt_more)
 
-## 🙏 感谢两位大佬的代码，在此基础上改写了新的功能
+## 🙏 感谢三位大佬的代码，在此基础上改写了新的功能
 
 - https://github.com/assimon/epusdt
 - https://github.com/v03413/bepusdt
+- https://github.com/botinheart/USDTMore
 
 ## 📢 声明
 

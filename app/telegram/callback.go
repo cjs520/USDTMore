@@ -6,8 +6,6 @@ import (
 	"USDTMore/app/log"
 	"USDTMore/app/model"
 	"fmt"
-	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
-	"github.com/tidwall/gjson"
 	"io"
 	"math/big"
 	"net/http"
@@ -15,6 +13,9 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
+	"github.com/tidwall/gjson"
 )
 
 const cbWallet = "wallet"
@@ -333,6 +334,9 @@ func getWalletInfoETH(name string, unit string, chain string, host string, apiKe
 		length := len(rawValue) - 12
 		if length > 0 {
 			rawValue = rawValue[0:length]
+		}
+		if length <= 0 {
+			rawValue = "0"
 		}
 	}
 	balanceStandard, ok := new(big.Int).SetString(rawValue, 10)
