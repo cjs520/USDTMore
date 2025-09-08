@@ -331,12 +331,20 @@ func handlePaymentTransactionForETH(_lock map[string]model.TradeOrders, _toChain
 			continue
 		}
 
-		orderKey := _toChain+_toAddress+decimalUSDT.String()
+		// 使用标准化的金额格式进行订单匹配
+		amountStr := decimalUSDT.StringFixed(2) // 统一使用2位小数格式
+		orderKey := _toChain+_toAddress+amountStr
 		_order, ok := _lock[orderKey]
 		if !ok {
-			// 订单不存在，记录调试信息
-			log.Info(fmt.Sprintf("[%s] 未找到匹配订单: key=%s, amount=%s, txid=%s", _toChain, orderKey, decimalUSDT.String(), transfer.Get("hash").String()))
-			continue
+			// 尝试使用原始字符串格式匹配
+			orderKeyAlt := _toChain+_toAddress+decimalUSDT.String()
+			_order, ok = _lock[orderKeyAlt]
+			if !ok {
+				// 订单不存在，记录调试信息
+				log.Info(fmt.Sprintf("[%s] 未找到匹配订单: key1=%s, key2=%s, amount=%s, txid=%s", 
+					_toChain, orderKey, orderKeyAlt, decimalUSDT.String(), transfer.Get("hash").String()))
+				continue
+			}
 		}
 
 		// 判断时间是否有效
@@ -768,15 +776,16 @@ func getUsdtTransByETH(chain string, address string) (gjson.Result, error) {
 	// 累计所有交易的 Value 来计算总交易量
 	var wa model.WalletAddress
 
-	// 迁移到Etherscan V2 API - 统一端点
-	var host = "https://api.etherscan.io/v2/api"
+	// 根据不同链类型使用对应的API端点
+	var host string
 	var chainId string
 	var apiKey string
 	var contractAddress string
 
-	// 根据链类型设置chainid和相关配置，并强制验证API Key
+	// 根据链类型设置API端点、chainid和相关配置，并强制验证API Key
 	switch chain {
 	case "POLY":
+		host = "https://api.etherscan.io/v2/api"  // Polygon使用Etherscan V2 API
 		chainId = "137" // Polygon chainid
 		apiKey = config.GetPolygonScanApiKey()
 		if apiKey == "" {
@@ -784,6 +793,7 @@ func getUsdtTransByETH(chain string, address string) (gjson.Result, error) {
 		}
 		contractAddress = config.GetPolygonScanContractAddress()
 	case "OP":
+		host = "https://api.etherscan.io/v2/api"  // Optimism使用Etherscan V2 API
 		chainId = "10" // Optimism chainid
 		apiKey = config.GetOptimismExplorerApiKey()
 		if apiKey == "" {
@@ -791,6 +801,7 @@ func getUsdtTransByETH(chain string, address string) (gjson.Result, error) {
 		}
 		contractAddress = config.GetOptimismExplorerContractAddress()
 	case "BSC":
+		host = "https://api.etherscan.io/v2/api"  // BSC使用Etherscan V2 Multichain API
 		chainId = "56" // BSC chainid
 		apiKey = config.GetBscExplorerApiKey()
 		if apiKey == "" {
@@ -798,6 +809,7 @@ func getUsdtTransByETH(chain string, address string) (gjson.Result, error) {
 		}
 		contractAddress = config.GetBscExplorerContractAddress()
 	case "ARB":
+		host = "https://api.etherscan.io/v2/api"  // Arbitrum使用Etherscan V2 API
 		chainId = "42161" // Arbitrum One chainid
 		apiKey = config.GetArbitrumScanApiKey()
 		if apiKey == "" {
@@ -805,6 +817,7 @@ func getUsdtTransByETH(chain string, address string) (gjson.Result, error) {
 		}
 		contractAddress = config.GetArbitrumContractAddress()
 	case "XLAYER":
+		host = "https://api.etherscan.io/v2/api"  // X-Layer使用Etherscan V2 API
 		chainId = "196" // X-Layer chainid
 		apiKey = config.GetXLayerApiKey()
 		if apiKey == "" {
@@ -816,7 +829,7 @@ func getUsdtTransByETH(chain string, address string) (gjson.Result, error) {
 	}
 
 	if model.DB.Where("chain = ? and address = ?", chain, address).First(&wa).Error == nil {
-		// V2 API查询格式：符合官方文档规范，添加分页参数
+		// 统一使用Etherscan V2 API格式（所有链都需要chainid参数）
 		var queryTx = "chainid=" + chainId + "&module=account&action=tokentx&contractaddress=" + contractAddress + "&address=" + address + "&page=1&offset=100&startblock=" + strconv.FormatInt(wa.StartBlock+1, 10) + "&endblock=" + strconv.FormatInt(wa.StartBlock+999999999999, 10) + "&sort=asc&apikey=" + apiKey
 		allTx := requestAddress(host, queryTx)
 		resultTx := gjson.ParseBytes(allTx)
