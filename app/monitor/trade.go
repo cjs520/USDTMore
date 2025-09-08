@@ -112,6 +112,66 @@ func TradeStart() {
 			handlePaymentTransactionForBscScan(_lock, _row.Address, result)
 			handleOtherNotifyForBscScan(_row.Address, result)
 		}
+
+		// 这里是Arbitrum One网络的监控
+		for _, _row := range model.GetAvailableAddress("ARB") {
+			var result gjson.Result
+			var err error
+
+			result, err = getUsdtArbitrumTransByArbitrumScan(_row.Address)
+			if err != nil {
+				log.Error(err.Error())
+				continue
+			}
+
+			handlePaymentTransactionForArbitrumScan(_lock, _row.Address, result)
+			handleOtherNotifyForArbitrumScan(_row.Address, result)
+		}
+
+		// 这里是X-Layer网络的监控
+		for _, _row := range model.GetAvailableAddress("XLAYER") {
+			var result gjson.Result
+			var err error
+
+			result, err = getUsdtXLayerTransByXLayerScan(_row.Address)
+			if err != nil {
+				log.Error(err.Error())
+				continue
+			}
+
+			handlePaymentTransactionForXLayerScan(_lock, _row.Address, result)
+			handleOtherNotifyForXLayerScan(_row.Address, result)
+		}
+
+		// 这里是Solana网络的监控
+		for _, _row := range model.GetAvailableAddress("SOL") {
+			var result gjson.Result
+			var err error
+
+			result, err = getUsdtSolanaTransBySolscan(_row.Address)
+			if err != nil {
+				log.Error(err.Error())
+				continue
+			}
+
+			handlePaymentTransactionForSolana(_lock, _row.Address, result)
+			handleOtherNotifyForSolana(_row.Address, result)
+		}
+
+		// 这里是Aptos网络的监控
+		for _, _row := range model.GetAvailableAddress("APT") {
+			var result gjson.Result
+			var err error
+
+			result, err = getUsdtAptosTransByAptosLabs(_row.Address)
+			if err != nil {
+				log.Error(err.Error())
+				continue
+			}
+
+			handlePaymentTransactionForAptos(_lock, _row.Address, result)
+			handleOtherNotifyForAptos(_row.Address, result)
+		}
 	}
 }
 
@@ -143,7 +203,7 @@ func getAllPendingOrders() (map[string]model.TradeOrders, error) {
 // 处理支付交易 TronScan
 func handlePaymentTransactionForTronScan(_lock map[string]model.TradeOrders, _toAddress string, _data gjson.Result) {
 	for _, transfer := range _data.Get("token_transfers").Array() {
-		if strings.ToLower(transfer.Get("to_address").String()) != strings.ToLower(_toAddress) {
+		if !strings.EqualFold(transfer.Get("to_address").String(), _toAddress) {
 			// 不是接收地址
 			continue
 		}
@@ -182,7 +242,7 @@ func handlePaymentTransactionForTronScan(_lock map[string]model.TradeOrders, _to
 // 处理支付交易 TronGrid
 func handlePaymentTransactionForTronGrid(_lock map[string]model.TradeOrders, _toAddress string, result gjson.Result) {
 	for _, transfer := range result.Get("data").Array() {
-		if strings.ToLower(transfer.Get("to").String()) != strings.ToLower(_toAddress) {
+		if !strings.EqualFold(transfer.Get("to").String(), _toAddress) {
 			// 不是接收地址
 			continue
 		}
@@ -221,14 +281,37 @@ func handlePaymentTransactionForTronGrid(_lock map[string]model.TradeOrders, _to
 // 处理支付交易 ETH兼容网络
 func handlePaymentTransactionForETH(_lock map[string]model.TradeOrders, _toChain string, _toAddress string, result gjson.Result) {
 	for _, transfer := range result.Get("result").Array() {
-		if strings.ToLower(transfer.Get("to").String()) != strings.ToLower(_toAddress) {
+		if !strings.EqualFold(transfer.Get("to").String(), _toAddress) {
 			// 不是接收地址
 			continue
 		}
 
 		tokenSymbol := transfer.Get("tokenSymbol").String()
-		// 不是USDT入账直接跳出
-		if tokenSymbol != "USDT" && tokenSymbol != "BSC-USD" {
+		contractAddress := transfer.Get("contractAddress").String()
+		
+		// 根据链类型验证USDT合约地址和token symbol
+		var isValidUSDT bool
+		switch _toChain {
+		case "POLY":
+			isValidUSDT = strings.EqualFold(contractAddress, config.GetPolygonScanContractAddress()) || 
+						  strings.Contains(strings.ToUpper(tokenSymbol), "USDT")
+		case "OP":
+			isValidUSDT = strings.EqualFold(contractAddress, config.GetOptimismExplorerContractAddress()) || 
+						  strings.Contains(strings.ToUpper(tokenSymbol), "USDT")
+		case "BSC":
+			isValidUSDT = strings.EqualFold(contractAddress, config.GetBscExplorerContractAddress()) || 
+						  strings.Contains(strings.ToUpper(tokenSymbol), "USDT") || tokenSymbol == "BSC-USD"
+		case "ARB":
+			isValidUSDT = strings.EqualFold(contractAddress, config.GetArbitrumContractAddress()) || 
+						  strings.Contains(strings.ToUpper(tokenSymbol), "USDT")
+		case "XLAYER":
+			isValidUSDT = strings.EqualFold(contractAddress, config.GetXLayerContractAddress()) || 
+						  strings.Contains(strings.ToUpper(tokenSymbol), "USDT")
+		default:
+			isValidUSDT = strings.Contains(strings.ToUpper(tokenSymbol), "USDT")
+		}
+		
+		if !isValidUSDT {
 			continue
 		}
 
@@ -244,26 +327,40 @@ func handlePaymentTransactionForETH(_lock map[string]model.TradeOrders, _toChain
 			continue
 		}
 
-		_order, ok := _lock[_toChain+_toAddress+decimalUSDT.String()]
+		orderKey := _toChain+_toAddress+decimalUSDT.String()
+		_order, ok := _lock[orderKey]
 		if !ok {
-			// 订单不存在或交易失败
+			// 订单不存在，记录调试信息
+			log.Info(fmt.Sprintf("[%s] 未找到匹配订单: key=%s, amount=%s, txid=%s", _toChain, orderKey, decimalUSDT.String(), transfer.Get("hash").String()))
 			continue
 		}
 
 		// 判断时间是否有效
 		var _createdAt = time.UnixMilli(transfer.Get("timeStamp").Int() * 1000)
 		if _createdAt.Unix() < _order.CreatedAt.Unix() || _createdAt.Unix() > _order.ExpiredAt.Unix() {
-			// 失效交易
+			// 失效交易，记录调试信息
+			log.Info(fmt.Sprintf("[%s] 交易时间无效: txid=%s, 交易时间=%s, 订单创建时间=%s, 订单过期时间=%s", 
+				_toChain, transfer.Get("hash").String(), 
+				_createdAt.Format(time.DateTime), 
+				_order.CreatedAt.Format(time.DateTime),
+				_order.ExpiredAt.Format(time.DateTime)))
 			continue
 		}
 
 		var _transId = transfer.Get("hash").String()
 		var _fromAddress = transfer.Get("from").String()
+		
+		log.Info(fmt.Sprintf("[%s] 处理订单支付: txid=%s, from=%s, to=%s, amount=%s", 
+			_toChain, _transId, _fromAddress, _toAddress, decimalUSDT.String()))
+		
 		if _order.OrderSetSucc(_fromAddress, _transId, _createdAt) == nil {
 			// 通知订单支付成功
+			log.Info(fmt.Sprintf("[%s] 订单支付成功，发送回调: order_id=%s, txid=%s", _toChain, _order.TradeId, _transId))
 			go notify.OrderNotify(_order)
 			// TG发送订单信息
 			go telegram.SendTradeSuccMsg(_order)
+		} else {
+			log.Error(fmt.Sprintf("[%s] 订单设置成功状态失败: order_id=%s, txid=%s", _toChain, _order.TradeId, _transId))
 		}
 	}
 }
@@ -299,7 +396,7 @@ func handleOtherNotifyForTronScan(_toAddress string, result gjson.Result) {
 		}
 
 		var title = "收入"
-		if strings.ToLower(transfer.Get("to_address").String()) != strings.ToLower(_toAddress) {
+		if !strings.EqualFold(transfer.Get("to_address").String(), _toAddress) {
 			title = "支出"
 		}
 
@@ -355,7 +452,7 @@ func handleOtherNotifyForTronGrid(_toAddress string, result gjson.Result) {
 		}
 
 		var title = "收入"
-		if strings.ToLower(transfer.Get("to").String()) != strings.ToLower(_toAddress) {
+		if !strings.EqualFold(transfer.Get("to").String(), _toAddress) {
 			title = "支出"
 		}
 
@@ -400,8 +497,31 @@ func handleOtherNotifyForETH(_toChain string, _toAddress string, result gjson.Re
 		}
 
 		tokenSymbol := transfer.Get("tokenSymbol").String()
-		// 不是USDT入账直接跳出
-		if tokenSymbol != "USDT" && tokenSymbol != "BSC-USD" {
+		contractAddress := transfer.Get("contractAddress").String()
+		
+		// 根据链类型验证USDT合约地址和token symbol
+		var isValidUSDT bool
+		switch _toChain {
+		case "POLY":
+			isValidUSDT = strings.EqualFold(contractAddress, config.GetPolygonScanContractAddress()) || 
+						  strings.Contains(strings.ToUpper(tokenSymbol), "USDT")
+		case "OP":
+			isValidUSDT = strings.EqualFold(contractAddress, config.GetOptimismExplorerContractAddress()) || 
+						  strings.Contains(strings.ToUpper(tokenSymbol), "USDT")
+		case "BSC":
+			isValidUSDT = strings.EqualFold(contractAddress, config.GetBscExplorerContractAddress()) || 
+						  strings.Contains(strings.ToUpper(tokenSymbol), "USDT") || tokenSymbol == "BSC-USD"
+		case "ARB":
+			isValidUSDT = strings.EqualFold(contractAddress, config.GetArbitrumContractAddress()) || 
+						  strings.Contains(strings.ToUpper(tokenSymbol), "USDT")
+		case "XLAYER":
+			isValidUSDT = strings.EqualFold(contractAddress, config.GetXLayerContractAddress()) || 
+						  strings.Contains(strings.ToUpper(tokenSymbol), "USDT")
+		default:
+			isValidUSDT = strings.Contains(strings.ToUpper(tokenSymbol), "USDT")
+		}
+		
+		if !isValidUSDT {
 			continue
 		}
 
@@ -433,7 +553,7 @@ func handleOtherNotifyForETH(_toChain string, _toAddress string, result gjson.Re
 		}
 
 		var title = "收入"
-		if strings.ToLower(transfer.Get("to").String()) != strings.ToLower(_toAddress) {
+		if !strings.EqualFold(transfer.Get("to").String(), _toAddress) {
 			title = "支出"
 		}
 
@@ -477,6 +597,22 @@ func handleOtherNotifyForBscScan(_toAddress string, result gjson.Result) {
 	handleOtherNotifyForETH("BSC", _toAddress, result)
 }
 
+// Arbitrum One交易处理函数
+func handlePaymentTransactionForArbitrumScan(_lock map[string]model.TradeOrders, _toAddress string, result gjson.Result) {
+	handlePaymentTransactionForETH(_lock, "ARB", _toAddress, result)
+}
+func handleOtherNotifyForArbitrumScan(_toAddress string, result gjson.Result) {
+	handleOtherNotifyForETH("ARB", _toAddress, result)
+}
+
+// X-Layer交易处理函数
+func handlePaymentTransactionForXLayerScan(_lock map[string]model.TradeOrders, _toAddress string, result gjson.Result) {
+	handlePaymentTransactionForETH(_lock, "XLAYER", _toAddress, result)
+}
+func handleOtherNotifyForXLayerScan(_toAddress string, result gjson.Result) {
+	handleOtherNotifyForETH("XLAYER", _toAddress, result)
+}
+
 // 搜索交易记录 TronScan
 func getUsdtTrc20TransByTronScan(_toAddress string) (gjson.Result, error) {
 	var now = time.Now()
@@ -501,9 +637,12 @@ func getUsdtTrc20TransByTronScan(_toAddress string) (gjson.Result, error) {
 	}
 	req.URL.RawQuery = params.Encode()
 
-	if config.GetTronScanApiKey() != "" {
-		req.Header.Add("TRON-PRO-API-KEY", config.GetTronScanApiKey())
+	// 根据TRONSCAN 2025年8月公告，API Key现在是强制要求的
+	apiKey := config.GetTronScanApiKey()
+	if apiKey == "" {
+		return gjson.Result{}, fmt.Errorf("TRON_SCAN_API_KEY是必需的，请设置环境变量")
 	}
+	req.Header.Add("TRON-PRO-API-KEY", apiKey)
 
 	// 请求交易记录
 	resp, err := client.Do(req)
@@ -550,10 +689,12 @@ func getUsdtTrc20TransByTronGrid(_toAddress string) (gjson.Result, error) {
 	} else {
 		params.Add("only_confirmed", "false")
 	}
-	if config.GetTronGridApiKey() != "" {
-
-		req.Header.Add("TRON-PRO-API-KEY", config.GetTronGridApiKey())
+	// 根据TRONSCAN 2025年8月公告，TronGrid API Key也是强制要求的
+	gridApiKey := config.GetTronGridApiKey()
+	if gridApiKey == "" {
+		return gjson.Result{}, fmt.Errorf("TRON_GRID_API_KEY是必需的，请设置环境变量")
 	}
+	req.Header.Add("TRON-PRO-API-KEY", gridApiKey)
 
 	req.URL.RawQuery = params.Encode()
 
@@ -613,29 +754,62 @@ func requestAddress(baseUrl string, query string) []byte {
 }
 
 /*
-所有ETN兼容链路的到账监控， 如果有金额匹配的自动返回
+所有ETH兼容链路的到账监控，使用Etherscan V2 API避免服务中断
 */
 func getUsdtTransByETH(chain string, address string) (gjson.Result, error) {
 	// 累计所有交易的 Value 来计算总交易量
 	var wa model.WalletAddress
 
-	var host = "https://api.polygonscan.com/api"
-	var apiKey = config.GetPolygonScanApiKey()
-	var contractAddress = config.GetPolygonScanContractAddress()
-	if chain == "OP" {
-		host = "https://api-optimistic.etherscan.io/api"
-		contractAddress = config.GetOptimismExplorerContractAddress()
+	// 迁移到Etherscan V2 API - 统一端点
+	var host = "https://api.etherscan.io/v2/api"
+	var chainId string
+	var apiKey string
+	var contractAddress string
+
+	// 根据链类型设置chainid和相关配置，并强制验证API Key
+	switch chain {
+	case "POLY":
+		chainId = "137" // Polygon chainid
+		apiKey = config.GetPolygonScanApiKey()
+		if apiKey == "" {
+			return gjson.Result{}, fmt.Errorf("POLYGON_SCAN_API_KEY是必需的，请设置环境变量")
+		}
+		contractAddress = config.GetPolygonScanContractAddress()
+	case "OP":
+		chainId = "10" // Optimism chainid
 		apiKey = config.GetOptimismExplorerApiKey()
-	}
-	if chain == "BSC" {
-		host = "https://api.bscscan.com/api"
-		contractAddress = config.GetBscExplorerContractAddress()
+		if apiKey == "" {
+			return gjson.Result{}, fmt.Errorf("OPTIMISM_EXPLORER_API_KEY是必需的，请设置环境变量")
+		}
+		contractAddress = config.GetOptimismExplorerContractAddress()
+	case "BSC":
+		chainId = "56" // BSC chainid
 		apiKey = config.GetBscExplorerApiKey()
+		if apiKey == "" {
+			return gjson.Result{}, fmt.Errorf("BSC_SCAN_API_KEY是必需的，请设置环境变量")
+		}
+		contractAddress = config.GetBscExplorerContractAddress()
+	case "ARB":
+		chainId = "42161" // Arbitrum One chainid
+		apiKey = config.GetArbitrumScanApiKey()
+		if apiKey == "" {
+			return gjson.Result{}, fmt.Errorf("ARBITRUM_SCAN_API_KEY是必需的，请设置环境变量")
+		}
+		contractAddress = config.GetArbitrumContractAddress()
+	case "XLAYER":
+		chainId = "196" // X-Layer chainid
+		apiKey = config.GetXLayerApiKey()
+		if apiKey == "" {
+			return gjson.Result{}, fmt.Errorf("XLAYER_SCAN_API_KEY是必需的，请设置环境变量")
+		}
+		contractAddress = config.GetXLayerContractAddress()
+	default:
+		return gjson.Result{}, fmt.Errorf("不支持的链类型: %s", chain)
 	}
 
 	if model.DB.Where("chain = ? and address = ?", chain, address).First(&wa).Error == nil {
-		// 这里查询订单历史
-		var queryTx = "module=account&action=tokentx&contractaddress=" + contractAddress + "&address=" + address + "&startblock=" + strconv.FormatInt(wa.StartBlock+1, 10) + "&endblock=" + strconv.FormatInt(wa.StartBlock+999999999999, 10) + "&sort=asc" + "&apikey=" + apiKey
+		// V2 API查询格式：符合官方文档规范，添加分页参数
+		var queryTx = "chainid=" + chainId + "&module=account&action=tokentx&contractaddress=" + contractAddress + "&address=" + address + "&page=1&offset=100&startblock=" + strconv.FormatInt(wa.StartBlock+1, 10) + "&endblock=" + strconv.FormatInt(wa.StartBlock+999999999999, 10) + "&sort=asc&apikey=" + apiKey
 		allTx := requestAddress(host, queryTx)
 		resultTx := gjson.ParseBytes(allTx)
 
@@ -652,6 +826,294 @@ func getUsdtOptimismTransByOptimismExplorer(_toAddress string) (gjson.Result, er
 }
 func getUsdtBscTransByBscScan(_toAddress string) (gjson.Result, error) {
 	return getUsdtTransByETH("BSC", _toAddress)
+}
+func getUsdtArbitrumTransByArbitrumScan(_toAddress string) (gjson.Result, error) {
+	return getUsdtTransByETH("ARB", _toAddress)
+}
+func getUsdtXLayerTransByXLayerScan(_toAddress string) (gjson.Result, error) {
+	return getUsdtTransByETH("XLAYER", _toAddress)
+}
+
+// Solana链USDT交易查询
+func getUsdtSolanaTransBySolscan(_toAddress string) (gjson.Result, error) {
+	var client = &http.Client{Timeout: time.Second * 15}
+	
+	// 使用Solscan API查询SPL Token交易
+	apiUrl := fmt.Sprintf("https://public-api.solscan.io/account/splTransfers?account=%s&limit=50", _toAddress)
+	req, err := http.NewRequest("GET", apiUrl, nil)
+	if err != nil {
+		return gjson.Result{}, fmt.Errorf("创建Solana请求错误: %w", err)
+	}
+
+	// 添加API Key（如果有）
+	apiKey := config.GetSolanaApiKey()
+	if apiKey != "" && apiKey != "YourSolanaApiKey" {
+		req.Header.Add("token", apiKey)
+	}
+
+	resp, err := client.Do(req)
+	if err != nil {
+		return gjson.Result{}, fmt.Errorf("请求Solana交易记录错误: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return gjson.Result{}, fmt.Errorf("Solana API请求失败: StatusCode = %d", resp.StatusCode)
+	}
+
+	all, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return gjson.Result{}, fmt.Errorf("读取Solana响应错误: %w", err)
+	}
+
+	return gjson.ParseBytes(all), nil
+}
+
+// Aptos链USDT交易查询
+func getUsdtAptosTransByAptosLabs(_toAddress string) (gjson.Result, error) {
+	var client = &http.Client{Timeout: time.Second * 15}
+	
+	// 使用Aptos官方API查询代币交易
+	apiUrl := fmt.Sprintf("https://fullnode.mainnet.aptoslabs.com/v1/accounts/%s/transactions?limit=50", _toAddress)
+	req, err := http.NewRequest("GET", apiUrl, nil)
+	if err != nil {
+		return gjson.Result{}, fmt.Errorf("创建Aptos请求错误: %w", err)
+	}
+
+	// 添加API Key（如果有）
+	apiKey := config.GetAptosApiKey()
+	if apiKey != "" && apiKey != "YourAptosApiKey" {
+		req.Header.Add("Authorization", "Bearer "+apiKey)
+	}
+
+	resp, err := client.Do(req)
+	if err != nil {
+		return gjson.Result{}, fmt.Errorf("请求Aptos交易记录错误: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return gjson.Result{}, fmt.Errorf("Aptos API请求失败: StatusCode = %d", resp.StatusCode)
+	}
+
+	all, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return gjson.Result{}, fmt.Errorf("读取Aptos响应错误: %w", err)
+	}
+
+	return gjson.ParseBytes(all), nil
+}
+
+// Solana交易处理函数
+func handlePaymentTransactionForSolana(_lock map[string]model.TradeOrders, _toAddress string, result gjson.Result) {
+	for _, transfer := range result.Get("data").Array() {
+		if transfer.Get("dst").String() != _toAddress {
+			continue // 不是目标地址
+		}
+
+		// 验证是否为USDT代币
+		if transfer.Get("token.tokenAddress").String() != config.GetSolanaContractAddress() {
+			continue
+		}
+
+		// 解析交易金额 (Solana USDT有6位小数)
+		amount := transfer.Get("amount").Float()
+		_rawQuant := decimal.NewFromFloat(amount / 1000000) // USDT 6位小数
+		if !inPaymentAmountRange(_rawQuant) {
+			continue
+		}
+
+		// 查找匹配的订单
+		_order, ok := _lock["SOL"+_toAddress+_rawQuant.String()]
+		if !ok {
+			continue
+		}
+
+		// 验证交易时间
+		blockTime := transfer.Get("blockTime").Int()
+		_createdAt := time.Unix(blockTime, 0)
+		if _createdAt.Unix() < _order.CreatedAt.Unix() || _createdAt.Unix() > _order.ExpiredAt.Unix() {
+			continue
+		}
+
+		// 处理成功的支付
+		var _transId = transfer.Get("txHash").String()
+		var _fromAddress = transfer.Get("src").String()
+		if _order.OrderSetSucc(_fromAddress, _transId, _createdAt) == nil {
+			go notify.OrderNotify(_order)
+			go telegram.SendTradeSuccMsg(_order)
+		}
+	}
+}
+
+func handleOtherNotifyForSolana(_toAddress string, result gjson.Result) {
+	for _, transfer := range result.Get("data").Array() {
+		if !model.GetOtherNotify("SOL", _toAddress) {
+			break
+		}
+
+		if transfer.Get("token.tokenAddress").String() != config.GetSolanaContractAddress() {
+			continue
+		}
+
+		amount := transfer.Get("amount").Float()
+		_rawAmount := decimal.NewFromFloat(amount / 1000000)
+		if !inPaymentAmountRange(_rawAmount) {
+			continue
+		}
+
+		blockTime := transfer.Get("blockTime").Int()
+		_created := time.Unix(blockTime, 0)
+		_txid := transfer.Get("txHash").String()
+		_detailUrl := "https://solscan.io/tx/" + _txid
+
+		if !model.IsNeedNotifyByTxid(_txid) {
+			continue
+		}
+
+		title := "收入"
+		if transfer.Get("dst").String() != _toAddress {
+			title = "支出"
+		}
+
+		text := fmt.Sprintf(
+			"#账户%s #非订单交易\n---\n```\n💲交易数额：%v USDT\n⏱️交易时间：%v\n✅接收地址：%v\n🅾️发送地址：%v```\n",
+			title,
+			_rawAmount,
+			_created.Format(time.DateTime),
+			help.MaskAddress(transfer.Get("dst").String()),
+			help.MaskAddress(transfer.Get("src").String()),
+		)
+
+		chatId, err := strconv.ParseInt(config.GetTgBotNotifyTarget(), 10, 64)
+		if err != nil {
+			continue
+		}
+
+		msg := tgbotapi.NewMessage(chatId, text)
+		msg.ParseMode = tgbotapi.ModeMarkdown
+		msg.ReplyMarkup = tgbotapi.InlineKeyboardMarkup{
+			InlineKeyboard: [][]tgbotapi.InlineKeyboardButton{
+				{tgbotapi.NewInlineKeyboardButtonURL("📝查看交易明细", _detailUrl)},
+			},
+		}
+
+		_record := model.NotifyRecord{Txid: _txid}
+		model.DB.Create(&_record)
+		go telegram.SendMsg(msg)
+	}
+}
+
+// Aptos交易处理函数
+func handlePaymentTransactionForAptos(_lock map[string]model.TradeOrders, _toAddress string, result gjson.Result) {
+	for _, tx := range result.Array() {
+		if tx.Get("type").String() != "user_transaction" {
+			continue
+		}
+
+		// 查找USDT转账事件
+		for _, event := range tx.Get("events").Array() {
+			if !strings.Contains(event.Get("type").String(), "::coin::CoinStore") {
+				continue
+			}
+
+			if event.Get("data.account").String() != _toAddress {
+				continue // 不是目标地址
+			}
+
+			// 解析金额 (Aptos USDT通常有6位小数)
+			amount := event.Get("data.amount").Float()
+			_rawQuant := decimal.NewFromFloat(amount / 1000000)
+			if !inPaymentAmountRange(_rawQuant) {
+				continue
+			}
+
+			// 查找匹配订单
+			_order, ok := _lock["APT"+_toAddress+_rawQuant.String()]
+			if !ok {
+				continue
+			}
+
+			// 验证交易时间
+			timestamp := tx.Get("timestamp").Int() / 1000000 // 微秒转秒
+			_createdAt := time.Unix(timestamp, 0)
+			if _createdAt.Unix() < _order.CreatedAt.Unix() || _createdAt.Unix() > _order.ExpiredAt.Unix() {
+				continue
+			}
+
+			// 处理成功支付
+			_transId := tx.Get("hash").String()
+			_fromAddress := tx.Get("sender").String()
+			if _order.OrderSetSucc(_fromAddress, _transId, _createdAt) == nil {
+				go notify.OrderNotify(_order)
+				go telegram.SendTradeSuccMsg(_order)
+			}
+		}
+	}
+}
+
+func handleOtherNotifyForAptos(_toAddress string, result gjson.Result) {
+	for _, tx := range result.Array() {
+		if !model.GetOtherNotify("APT", _toAddress) {
+			break
+		}
+
+		if tx.Get("type").String() != "user_transaction" {
+			continue
+		}
+
+		for _, event := range tx.Get("events").Array() {
+			if !strings.Contains(event.Get("type").String(), "::coin::CoinStore") {
+				continue
+			}
+
+			amount := event.Get("data.amount").Float()
+			_rawAmount := decimal.NewFromFloat(amount / 1000000)
+			if !inPaymentAmountRange(_rawAmount) {
+				continue
+			}
+
+			timestamp := tx.Get("timestamp").Int() / 1000000
+			_created := time.Unix(timestamp, 0)
+			_txid := tx.Get("hash").String()
+			_detailUrl := "https://explorer.aptoslabs.com/txn/" + _txid
+
+			if !model.IsNeedNotifyByTxid(_txid) {
+				continue
+			}
+
+			title := "收入"
+			if event.Get("data.account").String() != _toAddress {
+				title = "支出"
+			}
+
+			text := fmt.Sprintf(
+				"#账户%s #非订单交易\n---\n```\n💲交易数额：%v USDT\n⏱️交易时间：%v\n✅接收地址：%v\n🅾️发送地址：%v```\n",
+				title,
+				_rawAmount,
+				_created.Format(time.DateTime),
+				help.MaskAddress(event.Get("data.account").String()),
+				help.MaskAddress(tx.Get("sender").String()),
+			)
+
+			chatId, err := strconv.ParseInt(config.GetTgBotNotifyTarget(), 10, 64)
+			if err != nil {
+				continue
+			}
+
+			msg := tgbotapi.NewMessage(chatId, text)
+			msg.ParseMode = tgbotapi.ModeMarkdown
+			msg.ReplyMarkup = tgbotapi.InlineKeyboardMarkup{
+				InlineKeyboard: [][]tgbotapi.InlineKeyboardButton{
+					{tgbotapi.NewInlineKeyboardButtonURL("📝查看交易明细", _detailUrl)},
+				},
+			}
+
+			_record := model.NotifyRecord{Txid: _txid}
+			model.DB.Create(&_record)
+			go telegram.SendMsg(msg)
+		}
+	}
 }
 
 // 解析交易金额

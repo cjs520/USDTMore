@@ -34,9 +34,9 @@ func addStartWalletAddress() {
 	var _wa WalletAddress
 
 	for _, address := range config.GetInitWalletAddress() {
-		if help.IsValidTRONWalletAddress(address) || help.IsValidPOLWalletAddress(address) || help.IsValidOPTWalletAddress(address) || help.IsValidBSCWalletAddress(address) {
+		if help.IsValidTRONWalletAddress(address) || help.IsValidPOLWalletAddress(address) || help.IsValidOPTWalletAddress(address) || help.IsValidBSCWalletAddress(address) || help.IsValidARBWalletAddress(address) || help.IsValidXLAYERWalletAddress(address) || help.IsValidSOLWalletAddress(address) || help.IsValidAPTWalletAddress(address) {
 			_addresses := strings.Split(strings.TrimSpace(address), ":")
-			var _res2 = DB.Where("chain = > and address = ?", _addresses[0], _addresses[1]).First(&_wa)
+			var _res2 = DB.Where("chain = ? and address = ?", _addresses[0], _addresses[1]).First(&_wa)
 			if errors.Is(_res2.Error, gorm.ErrRecordNotFound) {
 				var _row = WalletAddress{Chain: _addresses[0], Address: _addresses[1], Status: StatusEnable}
 				var _res = DB.Create(&_row)
@@ -71,7 +71,7 @@ func (wa *WalletAddress) Delete() {
 */
 func ExistsAddress(chain string, address string) bool {
 	var rows []WalletAddress
-	DB.Where("chain = ? and status = ?", chain, StatusEnable).Find(&rows)
+	DB.Where("chain = ? and address = ? and status = ?", chain, address, StatusEnable).Find(&rows)
 	return len(rows) > 0
 }
 

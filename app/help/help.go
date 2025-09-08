@@ -136,6 +136,38 @@ func IsValidBSCWalletAddress(address string) bool {
 }
 
 /*
+是否是Arbitrum One的地址
+*/
+func IsValidARBWalletAddress(address string) bool {
+	match, err := regexp.MatchString(`^ARB:0x[a-zA-Z0-9]{40}$`, address)
+	return match && err == nil
+}
+
+/*
+是否是X-Layer的地址
+*/
+func IsValidXLAYERWalletAddress(address string) bool {
+	match, err := regexp.MatchString(`^XLAYER:0x[a-zA-Z0-9]{40}$`, address)
+	return match && err == nil
+}
+
+/*
+是否是Solana的地址
+*/
+func IsValidSOLWalletAddress(address string) bool {
+	match, err := regexp.MatchString(`^SOL:[1-9A-HJ-NP-Za-km-z]{32,44}$`, address)
+	return match && err == nil
+}
+
+/*
+是否是Aptos的地址
+*/
+func IsValidAPTWalletAddress(address string) bool {
+	match, err := regexp.MatchString(`^APT:0x[a-fA-F0-9]{64}$`, address)
+	return match && err == nil
+}
+
+/*
 掩码功能
 */
 func MaskAddress(address string) string {

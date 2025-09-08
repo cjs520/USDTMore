@@ -161,33 +161,86 @@ func IsTronScanApi() bool {
 }
 
 /*
-获得PolygonScan接口的API密钥
+获得Etherscan V2 API密钥（EVM兼容链统一使用）
+支持的链：Polygon, Optimism, BSC, Arbitrum, X-Layer
+*/
+func GetEtherscanApiKey() string {
+	// 优先使用统一的ETHERSCAN_API_KEY
+	if data := help.GetEnv("ETHERSCAN_API_KEY"); data != "" {
+		return strings.TrimSpace(data)
+	}
+	
+	// 向后兼容：依次尝试旧的各链专用API Key
+	keys := []string{
+		"POLYGON_SCAN_API_KEY",
+		"OPTIMISM_EXPLORER_API_KEY", 
+		"BSC_SCAN_API_KEY",
+		"ARBITRUM_SCAN_API_KEY",
+		"XLAYER_SCAN_API_KEY",
+	}
+	
+	for _, key := range keys {
+		if data := help.GetEnv(key); data != "" {
+			return strings.TrimSpace(data)
+		}
+	}
+	
+	return ""
+}
+
+/*
+获得Polygon接口的API密钥（已弃用，建议使用GetEtherscanApiKey）
 */
 func GetPolygonScanApiKey() string {
-	if data := help.GetEnv("POLYGON_SCAN_API_KEY"); data != "" {
-		return strings.TrimSpace(data)
-	}
-	return "JSA7UJB36K4W735KG2E891G117VHZUXPUI"
+	return GetEtherscanApiKey()
 }
 
 /*
-获得OptimismExplorer接口的API密钥
+获得OptimismExplorer接口的API密钥（已弃用，建议使用GetEtherscanApiKey）
 */
 func GetOptimismExplorerApiKey() string {
-	if data := help.GetEnv("OPTIMISM_EXPLORER_API_KEY"); data != "" {
-		return strings.TrimSpace(data)
-	}
-	return "ND5W8F2FBSA3R7GYARH9ZJI91JIHFAEFM5"
+	return GetEtherscanApiKey()
 }
 
 /*
-获得SolanaExplorer接口的API密钥, 目前并不需要， 保持向后兼容性
+获得BSC接口的API密钥（已弃用，建议使用GetEtherscanApiKey）
 */
 func GetBscExplorerApiKey() string {
-	if data := help.GetEnv("BSC_SCAN_API_KEY"); data != "" {
+	return GetEtherscanApiKey()
+}
+
+/*
+获得Arbitrum Scan接口的API密钥（已弃用，建议使用GetEtherscanApiKey）
+*/
+func GetArbitrumScanApiKey() string {
+	return GetEtherscanApiKey()
+}
+
+/*
+获得X-Layer接口的API密钥（已弃用，建议使用GetEtherscanApiKey）
+*/
+func GetXLayerApiKey() string {
+	return GetEtherscanApiKey()
+}
+
+/*
+获得Solana接口的API密钥
+*/
+func GetSolanaApiKey() string {
+	if data := help.GetEnv("SOLANA_API_KEY"); data != "" {
 		return strings.TrimSpace(data)
 	}
-	return "TAQJD39XSBTDBDYDYZTG3RH3UXJS2M9MN4"
+	return "YourSolanaApiKey"
+}
+
+/*
+获得Aptos接口的API密钥
+*/
+func GetAptosApiKey() string {
+	if data := help.GetEnv("APTOS_API_KEY"); data != "" {
+		return strings.TrimSpace(data)
+	}
+	return "YourAptosApiKey"
 }
 
 // ERC-20 合约地址 (Polygon 主网上的 USDT)
@@ -198,6 +251,18 @@ const tokenOptimismContractAddress = "0x94b008aA00579c1307B0EF2c499aD98a8ce58e58
 
 // ERC-20 合约地址 (Bsc 主网上的 USDT)
 const tokenBscContractAddress = "0x55d398326f99059fF775485246999027B3197955"
+
+// ERC-20 合约地址 (Arbitrum One 主网上的 USDT)
+const tokenArbitrumContractAddress = "0xFd086bC7CD5C481DCC9C85ebE478A1C0b69FCbb9"
+
+// ERC-20 合约地址 (X-Layer 主网上的 USDT)
+const tokenXLayerContractAddress = "0x1e4a5963abfd975d8c9021ce480b42188849d41d"
+
+// SPL Token 合约地址 (Solana 主网上的 USDT)
+const tokenSolanaContractAddress = "Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB"
+
+// Aptos 主网上的 USDT 合约地址
+const tokenAptosContractAddress = "0xf22bede237a07e121b56d91a491eb7bcdfd1f5907926a9e58338f964a01b17fa::asset::USDT"
 
 /*
 获得PolygonScan接口的API密钥
@@ -214,10 +279,38 @@ func GetOptimismExplorerContractAddress() string {
 }
 
 /*
-获得SolanaExplorer接口的API密钥, 目前并不需要， 保持向后兼容性
+获得BSC合约地址
 */
 func GetBscExplorerContractAddress() string {
 	return tokenBscContractAddress
+}
+
+/*
+获得Arbitrum One合约地址
+*/
+func GetArbitrumContractAddress() string {
+	return tokenArbitrumContractAddress
+}
+
+/*
+获得X-Layer合约地址
+*/
+func GetXLayerContractAddress() string {
+	return tokenXLayerContractAddress
+}
+
+/*
+获得Solana合约地址
+*/
+func GetSolanaContractAddress() string {
+	return tokenSolanaContractAddress
+}
+
+/*
+获得Aptos合约地址
+*/
+func GetAptosContractAddress() string {
+	return tokenAptosContractAddress
 }
 
 /*
