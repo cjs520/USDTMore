@@ -888,11 +888,8 @@ func getUsdtAptosTransByAptosLabs(_toAddress string) (gjson.Result, error) {
 		return gjson.Result{}, fmt.Errorf("创建Aptos请求错误: %w", err)
 	}
 
-	// 添加API Key（如果有）
-	apiKey := config.GetAptosApiKey()
-	if apiKey != "" && apiKey != "YourAptosApiKey" {
-		req.Header.Add("Authorization", "Bearer "+apiKey)
-	}
+	// Aptos官方API是公开的，不需要API Key
+	req.Header.Set("Content-Type", "application/json")
 
 	resp, err := client.Do(req)
 	if err != nil {

@@ -109,7 +109,7 @@ docker-compose down
 | 变量名 | 默认值 | 说明 |
 |--------|--------|------|
 | `SOLANA_API_KEY` | - | Solana链API密钥（如需使用SOL链） |
-| `APTOS_API_KEY` | - | Aptos链API密钥（如需使用APT链） |
+| ~~`APTOS_API_KEY`~~ | - | ~~Aptos链API密钥~~（**无需设置**，官方API公开免费） |
 | `AUTH_TOKEN` | `123456` | API认证Token |
 | `APP_URI` | 自动检测 | 应用访问域名 |
 | `EXPIRE_TIME` | `1800` | 订单过期时间(秒) |
@@ -128,7 +128,7 @@ docker-compose down
 | `ARB` | Arbitrum One | USDT-ERC20 | `ETHERSCAN_API_KEY` |
 | `XLAYER` | X-Layer | USDT | `ETHERSCAN_API_KEY` |
 | `SOL` | Solana | USDT-SPL | `SOLANA_API_KEY` |
-| `APT` | Aptos | USDT | `APTOS_API_KEY` |
+| `APT` | Aptos | USDT | **无需API Key** |
 
 ## 🎯 钱包地址配置
 
@@ -163,10 +163,10 @@ WALLET_ADDRESS="TRON:TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t,BSC:0x1234...abcd,POLY:0
 2. 注册开发者账号
 3. 创建API Key
 
-### Aptos API Key
-1. 访问 [AptosLabs.com](https://aptoslabs.com/)
-2. 注册开发者账号
-3. 申请API访问权限
+### ~~Aptos API Key~~
+**Aptos链使用官方公开API，无需申请API Key**
+- API地址：`https://fullnode.mainnet.aptoslabs.com`
+- 免费使用，无需认证
 
 ## 🚦 部署验证
 

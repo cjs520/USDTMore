@@ -51,7 +51,6 @@ USDTMore 所有参数都是以传递环境变量的方式进行配置，大部�
 | TRON_GRID_API_KEY         | `空`          | **必须设置** TRONGRID API KEY，强制要求，避免官方限流                                                                                                           |
 | ETHERSCAN_API_KEY         | `空`          | **必须设置** EVM兼容链统一API KEY，支持Polygon、Optimism、BSC、Arbitrum、X-Layer等链                                                                            |
 | SOLANA_API_KEY            | `空`          | **必须设置** SOLANA API KEY，Solana链交易查询API密钥（Solscan）                                                                                                |
-| APTOS_API_KEY             | `空`          | **必须设置** APTOS API KEY，Aptos链交易查询API密钥（AptosLabs）                                                                                                |
 | PAYMENT_AMOUNT_RANGE      | `0.01,99999` | 支付监控的允许数额范围(闭区间)，设置合理数值可避免一些诱导式诈骗交易提醒                                                                                                         |
 | LOG_DIR                   | `./log`      | 应用程序的日志路径                                                                                                                                     |
 | DB_DIR                    | `./db`       | 应用程序的数据库路径                                                                                                                                    |
@@ -65,7 +64,6 @@ USDTMore 所有参数都是以传递环境变量的方式进行配置，大部�
 - `TRON_SCAN_API_KEY` 或 `TRON_GRID_API_KEY` - TRON链API密钥（至少设置一个）
 - `ETHERSCAN_API_KEY` - EVM兼容链统一API密钥（Polygon、BSC、Arbitrum等）
 - `SOLANA_API_KEY` - Solana链API密钥（如需使用SOL链）
-- `APTOS_API_KEY` - Aptos链API密钥（如需使用APT链）
 
 **注意：自2025年起，所有区块链浏览器API都强制要求API Key，不设置将导致交易查询失败！**
 
@@ -88,7 +86,9 @@ Telegram 搜索`@myidbot`机器人并启用，`/getid`返回的ID就是`TG_BOT_A
 
 ### 如何申请`TronScan`和`TronGrid`的ApiKey
 
-目前[TronScan](https://tronscan.org/)/[TronGrid](https://www.trongrid.io/)、[EtherScan](https://etherscan.io/)、[Solscan](https://solscan.io/)、[AptosLabs](https://aptoslabs.com/) 都可以通过邮箱注册，登录之后在用户中心创建一个ApiKey即可；默认免费套餐都是每天10W请求，对于个人收款绰绰有余。
+目前[TronScan](https://tronscan.org/)/[TronGrid](https://www.trongrid.io/)、[EtherScan](https://etherscan.io/)、[Solscan](https://solscan.io/) 都可以通过邮箱注册，登录之后在用户中心创建一个ApiKey即可；默认免费套餐都是每天10W请求，对于个人收款绰绰有余。
+
+**注意：** Aptos使用官方公开API，无需申请API Key。
 
 ### 支持的区块链网络
 
