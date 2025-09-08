@@ -20,9 +20,9 @@ docker run -d --restart=always --name usdtmore -p 6080:6080 \
   -e APP_URI=https://你的域名.com \
   -e REWRITE_HTTPS=true \
   -e ETHERSCAN_API_KEY=你的Etherscan_API_Key \
-  -e TRON_GRID_API_KEY=你的TronGrid_API_Key \
+  -e TRON_SERVER_API="https://apilist.tronscanapi.com/api/block" \
+  -e TRON_SCAN_API_KEY=你的TRON_SCAN_API_KEY \
   -e SOLANA_API_KEY=你的Solana_API_Key \
-  -e APTOS_API_KEY=你的Aptos_API_Key \
   zxzx412/usdtmore:latest
 ```
 
@@ -47,9 +47,8 @@ services:
       
       # API Keys (必需)
       ETHERSCAN_API_KEY: "你的Etherscan_API_Key"    # EVM链统一API Key
-      TRON_GRID_API_KEY: "你的TronGrid_API_Key"     # TRON链API Key
+      TRON_SCAN_API_KEY: "你的TRON_SCAN_API_KEY"     # TRON链API Key
       SOLANA_API_KEY: "你的Solana_API_Key"          # Solana链API Key (可选)
-      APTOS_API_KEY: "你的Aptos_API_Key"            # Aptos链API Key (可选)
       
       # 应用配置
       AUTH_TOKEN: "你的验证密钥"
@@ -57,7 +56,7 @@ services:
       REWRITE_HTTPS: "true"
       
       # 网络配置
-      TRON_SERVER_API: "TRON_GRID"        # 推荐使用TRON_GRID
+      TRON_SERVER_API: "https://apilist.tronscanapi.com/api/block"        # 推荐使用TRON_GRID
       ETH_CONFIRMATION: "0"               # EVM链确认数
       TRADE_IS_CONFIRMED: "0"             # TRON链是否需要确认
       
@@ -153,8 +152,8 @@ WALLET_ADDRESS="TRON:TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t,BSC:0x1234...abcd,POLY:0
 4. 创建新的API Key
 5. **一个Key支持所有EVM链**：Polygon、BSC、Arbitrum、Optimism、X-Layer
 
-### TronGrid API Key
-1. 访问 [TronGrid.io](https://www.trongrid.io/)
+### Tronscan API Key
+1. 访问 [Tronscan](https://tronscan.org/))
 2. 注册账号并登录
 3. 在用户中心创建API Key
 4. 免费套餐：10万次/天
