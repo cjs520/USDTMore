@@ -26,6 +26,7 @@ FROM debian:bookworm-slim
 ENV DEBIAN_FRONTEND=noninteractive
 ENV DEBCONF_NOWARNINGS="yes"
 ENV TZ=Asia/Shanghai
+ENV HTML_DIR=/runtime
 
 COPY --from=builder /go/release/usdtmore /runtime/usdtmore
 
