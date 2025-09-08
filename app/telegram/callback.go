@@ -205,13 +205,20 @@ func cbOrderDetailAction(tradeId string) {
 ⚖️️ 确认时间：`+o.ConfirmedAt.Format(time.DateTime)+`
 `+"\n```")
 		_msg.ParseMode = tgbotapi.ModeMarkdown
-		_msg.ReplyMarkup = tgbotapi.InlineKeyboardMarkup{
-			InlineKeyboard: [][]tgbotapi.InlineKeyboardButton{
-				{
-					tgbotapi.NewInlineKeyboardButtonURL("🌏商户网站", _site.String()),
-					tgbotapi.NewInlineKeyboardButtonURL("📝交易明细", detailUrl+o.TradeHash),
-				},
+		// 构建回复按钮，只有当TradeHash有效时才添加交易链接
+		buttons := [][]tgbotapi.InlineKeyboardButton{
+			{
+				tgbotapi.NewInlineKeyboardButtonURL("🌏商户网站", _site.String()),
 			},
+		}
+		
+		// 只有在TradeHash不为空且不等于TradeId时才添加交易链接
+		if o.TradeHash != "" && o.TradeHash != o.TradeId {
+			buttons[0] = append(buttons[0], tgbotapi.NewInlineKeyboardButtonURL("📝交易明细", detailUrl+o.TradeHash))
+		}
+		
+		_msg.ReplyMarkup = tgbotapi.InlineKeyboardMarkup{
+			InlineKeyboard: buttons,
 		}
 
 		SendMsg(_msg)
