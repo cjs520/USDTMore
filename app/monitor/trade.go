@@ -316,7 +316,11 @@ func handlePaymentTransactionForETH(_lock map[string]model.TradeOrders, _toChain
 		}
 
 		// 计算交易金额
-		value, _ := new(big.Int).SetString(transfer.Get("value").String(), 10)
+		value, ok := new(big.Int).SetString(transfer.Get("value").String(), 10)
+		if !ok || value == nil {
+			log.Error("Failed to parse transfer value:", transfer.Get("value").String())
+			value = big.NewInt(0)
+		}
 		tokenDecimals, _ := strconv.ParseInt(transfer.Get("tokenDecimal").String(), 10, 32)
 		decimalFactor := new(big.Int).Exp(big.NewInt(10), big.NewInt(tokenDecimals), nil)
 		valueUSDT := new(big.Float).Quo(new(big.Float).SetInt(value), new(big.Float).SetInt(decimalFactor))
@@ -360,7 +364,7 @@ func handlePaymentTransactionForETH(_lock map[string]model.TradeOrders, _toChain
 			// TG发送订单信息
 			go telegram.SendTradeSuccMsg(_order)
 		} else {
-			log.Error(fmt.Sprintf("[%s] 订单设置成功状态失败: order_id=%s, txid=%s", _toChain, _order.TradeId, _transId))
+			log.Error("["+_toChain+"] 订单设置成功状态失败: order_id="+_order.TradeId+", txid="+_transId)
 		}
 	}
 }
@@ -526,7 +530,11 @@ func handleOtherNotifyForETH(_toChain string, _toAddress string, result gjson.Re
 		}
 
 		// 计算交易金额
-		value, _ := new(big.Int).SetString(transfer.Get("value").String(), 10)
+		value, ok := new(big.Int).SetString(transfer.Get("value").String(), 10)
+		if !ok || value == nil {
+			log.Error("Failed to parse transfer value:", transfer.Get("value").String())
+			value = big.NewInt(0)
+		}
 		tokenDecimals, _ := strconv.ParseInt(transfer.Get("tokenDecimal").String(), 10, 32)
 		decimalFactor := new(big.Int).Exp(big.NewInt(10), big.NewInt(tokenDecimals), nil)
 		valueUSDT := new(big.Float).Quo(new(big.Float).SetInt(value), new(big.Float).SetInt(decimalFactor))

@@ -40,22 +40,17 @@ func cbWalletAction(query *tgbotapi.CallbackQuery, address string) {
 	case "TRON":
 		info = getWalletInfoByTRONAddress(_addresses[1])
 		detailUrl = "https://tronscan.org/#/address/" + _addresses[1]
-		break
 	case "POLY":
 		info = getWalletInfoByPOLAddress(_addresses[1])
 		detailUrl = "https://polygonscan.com/address/" + _addresses[1]
-		break
 	case "OP":
 		info = getWalletInfoByOPTAddress(_addresses[1])
 		detailUrl = "https://optimistic.etherscan.io/address/" + _addresses[1]
-		break
 	case "BSC":
 		info = getWalletInfoByBSCAddress(_addresses[1])
 		detailUrl = "https://bscscan.com/address/" + _addresses[1]
-		break
 	default:
 		msg = tgbotapi.NewMessage(query.Message.Chat.ID, "💔输入格式不正确，使用链路代码开头[TRON:|POLY:|OPT:|BSC:]，比如: TRON:xxxxx")
-		break
 	}
 
 	if info != "" {
@@ -340,8 +335,12 @@ func getWalletInfoETH(name string, unit string, chain string, host string, apiKe
 		}
 	}
 	balanceStandard, ok := new(big.Int).SetString(rawValue, 10)
-	if ok {
-		log.Error("GetWalletInfoByAddress convert into USDT")
+	if !ok {
+		log.Error("GetWalletInfoByAddress convert into USDT failed, rawValue:", rawValue)
+		balanceStandard = big.NewInt(0) // 设置默认值为0
+	}
+	if balanceStandard == nil {
+		balanceStandard = big.NewInt(0) // 额外的安全检查
 	}
 	balanceFloat := new(big.Float).SetInt(balanceStandard)
 	balanceUSDT := new(big.Float).Quo(balanceFloat, big.NewFloat(1e6)) // USDT 有 6 位小数
@@ -392,7 +391,7 @@ func getWalletInfoETH(name string, unit string, chain string, host string, apiKe
 				from := tx.Get("from").String()
 				to := tx.Get("to").String()
 				if !ok {
-					log.Error("解析交易金额失败: %s", rawValue)
+					log.Error("解析交易金额失败:", rawValue)
 				}
 				if from == strings.ToLower(address) {
 					totalOutValue.Add(totalOutValue, valueUSDT)
