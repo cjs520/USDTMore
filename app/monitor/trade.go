@@ -195,7 +195,10 @@ func getAllPendingOrders() (map[string]model.TradeOrders, error) {
 			}
 			continue
 		}
-		_lock[order.Chain+order.Address+order.Amount] = order
+		// 标准化订单金额格式，确保与交易匹配时的Key一致
+		amount, _ := decimal.NewFromString(order.Amount)
+		standardAmount := amount.StringFixed(2)
+		_lock[order.Chain+order.Address+standardAmount] = order
 	}
 	return _lock, nil
 }
@@ -348,7 +351,7 @@ func handlePaymentTransactionForETH(_lock map[string]model.TradeOrders, _toChain
 		}
 
 		// 判断时间是否有效
-		var _createdAt = time.UnixMilli(transfer.Get("timeStamp").Int() * 1000)
+		var _createdAt = time.Unix(transfer.Get("timeStamp").Int(), 0)
 		if _createdAt.Unix() < _order.CreatedAt.Unix() || _createdAt.Unix() > _order.ExpiredAt.Unix() {
 			// 失效交易，记录调试信息
 			log.Info(fmt.Sprintf("[%s] 交易时间无效: txid=%s, 交易时间=%s, 订单创建时间=%s, 订单过期时间=%s", 
@@ -553,7 +556,7 @@ func handleOtherNotifyForETH(_toChain string, _toAddress string, result gjson.Re
 			continue
 		}
 
-		var _created = time.UnixMilli(transfer.Get("timeStamp").Int() * 1000)
+		var _created = time.Unix(transfer.Get("timeStamp").Int(), 0)
 		var _txid = transfer.Get("hash").String()
 		var _detailUrl = "https://polygonscan.com/tx/" + _txid
 		if _toChain == "OP" {
@@ -834,6 +837,28 @@ func getUsdtTransByETH(chain string, address string) (gjson.Result, error) {
 		allTx := requestAddress(host, queryTx)
 		resultTx := gjson.ParseBytes(allTx)
 
+		// 更新StartBlock - 处理最新的区块号，避免重复查询
+		if resultTx.Get("result").IsArray() && len(resultTx.Get("result").Array()) > 0 {
+			latestBlockNumber := int64(0)
+			threeHoursAgo := time.Now().Add(-3 * time.Hour)
+			
+			for _, tx := range resultTx.Get("result").Array() {
+				txTime := time.Unix(tx.Get("timeStamp").Int(), 0)
+				blockNumber := tx.Get("blockNumber").Int()
+				
+				// 只更新3小时前的区块，确保交易已确认
+				if txTime.Before(threeHoursAgo) && blockNumber > latestBlockNumber {
+					latestBlockNumber = blockNumber
+				}
+			}
+			
+			if latestBlockNumber > wa.StartBlock {
+				wa.StartBlock = latestBlockNumber
+				model.DB.Save(&wa)
+				log.Info(fmt.Sprintf("[%s] 更新StartBlock: address=%s, block=%d", chain, address, latestBlockNumber))
+			}
+		}
+
 		return resultTx, nil
 	}
 
@@ -941,10 +966,18 @@ func handlePaymentTransactionForSolana(_lock map[string]model.TradeOrders, _toAd
 			continue
 		}
 
-		// 查找匹配的订单
-		_order, ok := _lock["SOL"+_toAddress+_rawQuant.String()]
+		// 查找匹配的订单 - 使用双重格式匹配
+		amountStr := _rawQuant.StringFixed(2) // 标准化格式
+		orderKey := "SOL"+_toAddress+amountStr
+		_order, ok := _lock[orderKey]
 		if !ok {
-			continue
+			// 尝试原始格式
+			orderKeyAlt := "SOL"+_toAddress+_rawQuant.String()
+			_order, ok = _lock[orderKeyAlt]
+			if !ok {
+				log.Info(fmt.Sprintf("[SOL] 未找到匹配订单: key1=%s, key2=%s, amount=%s", orderKey, orderKeyAlt, _rawQuant.String()))
+				continue
+			}
 		}
 
 		// 验证交易时间
@@ -1046,10 +1079,18 @@ func handlePaymentTransactionForAptos(_lock map[string]model.TradeOrders, _toAdd
 				continue
 			}
 
-			// 查找匹配订单
-			_order, ok := _lock["APT"+_toAddress+_rawQuant.String()]
+			// 查找匹配订单 - 使用双重格式匹配
+			amountStr := _rawQuant.StringFixed(2) // 标准化格式
+			orderKey := "APT"+_toAddress+amountStr
+			_order, ok := _lock[orderKey]
 			if !ok {
-				continue
+				// 尝试原始格式
+				orderKeyAlt := "APT"+_toAddress+_rawQuant.String()
+				_order, ok = _lock[orderKeyAlt]
+				if !ok {
+					log.Info(fmt.Sprintf("[APT] 未找到匹配订单: key1=%s, key2=%s, amount=%s", orderKey, orderKeyAlt, _rawQuant.String()))
+					continue
+				}
 			}
 
 			// 验证交易时间
@@ -1140,5 +1181,6 @@ func parseTransAmount(amount float64) (decimal.Decimal, string) {
 	var _decimalDivisor = decimal.NewFromFloat(1000000)
 	var result = _decimalAmount.Div(_decimalDivisor)
 
-	return result, result.String()
+	// 返回标准化的2位小数格式，确保与订单Key匹配
+	return result, result.StringFixed(2)
 }

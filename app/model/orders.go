@@ -126,7 +126,10 @@ func CalcTradeAmount(wa []WalletAddress, rate, money float64) (WalletAddress, st
 	var _lock = make(map[string]bool)
 	DB.Where("status = ?", OrderStatusWaiting).Find(&_orders)
 	for _, _order := range _orders {
-		_lock[_order.Chain+_order.Address+_order.Amount] = true
+		// 标准化订单金额格式，确保与其他地方的Key一致
+		amount, _ := decimal.NewFromString(_order.Amount)
+		standardAmount := amount.StringFixed(2)
+		_lock[_order.Chain+_order.Address+standardAmount] = true
 	}
 
 	var _atom = decimal.NewFromFloat(Atomicity)
@@ -134,7 +137,9 @@ func CalcTradeAmount(wa []WalletAddress, rate, money float64) (WalletAddress, st
 	var _payAmount, _ = decimal.NewFromString(payAmount)
 	for {
 		for _, address := range wa {
-			_key := address.Chain + address.Address + _payAmount.String()
+			// 使用标准化的金额格式进行Key匹配
+			standardPayAmount := _payAmount.StringFixed(2)
+			_key := address.Chain + address.Address + standardPayAmount
 			if _, ok := _lock[_key]; ok {
 				continue
 			}
