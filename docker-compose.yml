@@ -47,7 +47,7 @@ services:
       
       # 支付配置
       PAYMENT_AMOUNT_RANGE: "0.01,99999"  # 支付金额范围
-      EXPIRE_TIME: "1800"                 # 订单过期时间(秒)
+      EXPIRE_TIME: "600"                  # 订单过期时间(秒) - 10分钟
       
       # 可选：预设钱包地址
       WALLET_ADDRESS: "TRON:YOUR_TRON_ADDRESS,BSC:YOUR_BSC_ADDRESS,POLY:YOUR_POLYGON_ADDRESS,OP:YOUR_OPTIMISM_ADDRESS"

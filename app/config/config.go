@@ -12,7 +12,7 @@ import (
 	"time"
 )
 
-const defaultExpireTime = 1800        // 订单默认有效期 10分钟
+const defaultExpireTime = 600         // 订单默认有效期 10分钟
 const defaultUsdtRate = 7.4           // 默认汇率
 const defaultAuthToken = "123234"     // 默认授权码
 const defaultListen = ":6080"         // 默认监听地址
