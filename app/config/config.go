@@ -503,3 +503,83 @@ func IsReWriteHttps() bool {
 	}
 	return false
 }
+
+/*
+获取数据库类型
+*/
+func GetDBType() string {
+	if data := help.GetEnv("DB_TYPE"); data != "" {
+		return strings.TrimSpace(data)
+	}
+	return "sqlite" // 默认使用sqlite以保持向后兼容
+}
+
+/*
+获取数据库主机地址
+*/
+func GetDBHost() string {
+	if data := help.GetEnv("DB_HOST"); data != "" {
+		return strings.TrimSpace(data)
+	}
+	return "localhost"
+}
+
+/*
+获取数据库端口
+*/
+func GetDBPort() string {
+	if data := help.GetEnv("DB_PORT"); data != "" {
+		return strings.TrimSpace(data)
+	}
+	return "5432"
+}
+
+/*
+获取数据库名称
+*/
+func GetDBName() string {
+	if data := help.GetEnv("DB_NAME"); data != "" {
+		return strings.TrimSpace(data)
+	}
+	return "usdtmore"
+}
+
+/*
+获取数据库用户名
+*/
+func GetDBUser() string {
+	if data := help.GetEnv("DB_USER"); data != "" {
+		return strings.TrimSpace(data)
+	}
+	return "usdtmore"
+}
+
+/*
+获取数据库密码
+*/
+func GetDBPassword() string {
+	if data := help.GetEnv("DB_PASSWORD"); data != "" {
+		return strings.TrimSpace(data)
+	}
+	return ""
+}
+
+/*
+获取数据库SSL模式
+*/
+func GetDBSSLMode() string {
+	if data := help.GetEnv("DB_SSLMODE"); data != "" {
+		return strings.TrimSpace(data)
+	}
+	return "disable"
+}
+
+/*
+获取数据库时区
+*/
+func GetDBTimezone() string {
+	if data := help.GetEnv("DB_TIMEZONE"); data != "" {
+		return strings.TrimSpace(data)
+	}
+	return "Asia/Shanghai"
+}

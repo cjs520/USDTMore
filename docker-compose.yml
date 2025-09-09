@@ -1,0 +1,86 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:15-alpine
+    container_name: usdtmore-postgres
+    restart: always
+    environment:
+      POSTGRES_DB: usdtmore
+      POSTGRES_USER: usdtmore
+      POSTGRES_PASSWORD: YOUR_DB_PASSWORD
+      PGTZ: Asia/Shanghai
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./init.sql:/docker-entrypoint-initdb.d/init.sql
+    ports:
+      - "5432:5432"
+    networks:
+      - usdtmore-network
+
+  usdtmore:
+    image: zxzx412/usdtmore:arm64
+    container_name: usdtmore
+    restart: always
+    ports:
+      - "6080:6080"
+    environment:
+      # 必需配置项
+      TG_BOT_TOKEN: "YOUR_TELEGRAM_BOT_TOKEN"
+      TG_BOT_ADMIN_ID: "YOUR_TELEGRAM_ADMIN_ID" 
+      
+      # API Keys (必需)
+      ETHERSCAN_API_KEY: "YOUR_ETHERSCAN_API_KEY"    # EVM链统一API Key
+      TRON_SERVER_API: "https://apilist.tronscanapi.com/api/block"
+      TRON_SCAN_API_KEY: "YOUR_TRON_SCAN_API_KEY"     # TRON链API Key
+      SOLANA_API_KEY: "YOUR_SOLANA_API_KEY"          # Solana链API Key (可选)
+      
+      
+      # 应用配置
+      AUTH_TOKEN: "YOUR_AUTH_TOKEN"
+      APP_URI: "https://your-domain.com"
+      REWRITE_HTTPS: "true"
+      
+      # 网络配置
+      ETH_CONFIRMATION: "0"               # EVM链确认数
+      TRADE_IS_CONFIRMED: "0"             # TRON链是否需要确认
+      
+      # 支付配置
+      PAYMENT_AMOUNT_RANGE: "0.01,99999"  # 支付金额范围
+      EXPIRE_TIME: "1800"                 # 订单过期时间(秒)
+      
+      # 可选：预设钱包地址
+      WALLET_ADDRESS: "TRON:YOUR_TRON_ADDRESS,BSC:YOUR_BSC_ADDRESS,POLY:YOUR_POLYGON_ADDRESS,OP:YOUR_OPTIMISM_ADDRESS"
+      
+      # 数据库配置
+      DB_TYPE: "postgres"
+      DB_HOST: "postgres"
+      DB_PORT: "5432"
+      DB_NAME: "usdtmore"
+      DB_USER: "usdtmore"
+      DB_PASSWORD: "YOUR_DB_PASSWORD"
+      DB_SSLMODE: "disable"
+      DB_TIMEZONE: "Asia/Shanghai"
+      
+      # Telegram通知配置 (可选)
+    #   TG_BOT_GROUP_ID: "你的群组ID"        # 交易通知群组
+    command: ["./wait-for-db.sh", "postgres", "5432", "./usdtmore"]
+    volumes:
+      - ./logs:/app/log                   # 日志持久化
+    depends_on:
+      - postgres
+    networks:
+      - usdtmore-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:6080/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+volumes:
+  postgres_data:
+
+networks:
+  usdtmore-network:
+    driver: bridge

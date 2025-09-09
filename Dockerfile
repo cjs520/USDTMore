@@ -29,6 +29,7 @@ ENV TZ=Asia/Shanghai
 ENV HTML_DIR=/runtime
 
 COPY --from=builder /go/release/usdtmore /runtime/usdtmore
+COPY ./wait-for-db.sh /runtime/wait-for-db.sh
 
 ADD ./templates /runtime/templates
 ADD ./static /runtime/static
@@ -38,6 +39,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         tzdata \
         ca-certificates \
         curl \
+        postgresql-client \
+        netcat-openbsd \
     && ln -fs /usr/share/zoneinfo/Asia/Shanghai /etc/localtime \
     && dpkg-reconfigure -f noninteractive tzdata \
     && apt-get clean \
@@ -46,6 +49,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 # Create non-root user for security
 RUN groupadd -r usdtmore && useradd -r -g usdtmore usdtmore \
+    && chmod +x /runtime/wait-for-db.sh \
     && chown -R usdtmore:usdtmore /runtime
 
 # Switch to non-root user
@@ -54,9 +58,10 @@ USER usdtmore
 # Set working directory
 WORKDIR /runtime
 
-# Health check
-HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
-    CMD curl -f http://localhost:8080/api/health || exit 1
+# Health check - verify both HTTP service and database connectivity
+HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=3 \
+    CMD curl -f http://localhost:8080/api/health && \
+        pg_isready -h $DB_HOST -p $DB_PORT -U $DB_USER -d $DB_NAME || exit 1
 
 # Expose port
 EXPOSE 8080
