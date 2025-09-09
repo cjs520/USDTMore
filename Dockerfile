@@ -4,7 +4,7 @@ ARG BUILDPLATFORM
 ARG TARGETOS
 ARG TARGETARCH
 
-FROM --platform=$BUILDPLATFORM golang:1.23 AS builder
+FROM golang:1.23 AS builder
 
 ENV GO111MODULE=on
 ENV CGO_ENABLED=0
@@ -15,8 +15,8 @@ COPY . .
 
 # Build for target architecture
 RUN set -x \
-    && echo "Building for platform: $TARGETPLATFORM (OS: $TARGETOS, ARCH: $TARGETARCH)" \
-    && GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH:-amd64} go build \
+    && echo "Building for native platform" \
+    && go build \
         -trimpath \
         -ldflags="-s -w -buildid=" \
         -o usdtmore ./main

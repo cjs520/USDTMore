@@ -19,7 +19,7 @@ services:
       - usdtmore-network
 
   usdtmore:
-    image: zxzx412/usdtmore:arm64
+    build: .
     container_name: usdtmore
     restart: always
     ports:
