@@ -19,7 +19,7 @@ RUN set -x \
     && GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH:-amd64} go build \
         -trimpath \
         -ldflags="-s -w -buildid=" \
-        -o usdtmore .
+        -o usdtmore ./main
 
 FROM debian:bookworm-slim
 
