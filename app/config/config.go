@@ -28,9 +28,17 @@ func init() {
 	// 获取应用程序当前的路径
 	execPath, err := os.Executable()
 	if err != nil {
-		panic(err)
+		// 如果无法获取可执行文件路径，使用当前工作目录
+		pwd, pwdErr := os.Getwd()
+		if pwdErr != nil {
+			// 最后的备选方案
+			runPath = "."
+		} else {
+			runPath = pwd
+		}
+	} else {
+		runPath = filepath.Dir(execPath)
 	}
-	runPath = filepath.Dir(execPath)
 }
 
 /*
@@ -453,13 +461,282 @@ func GetOutputLog() string {
 }
 
 /*
-数据库路径
+数据库路径 (SQLite)
 */
 func GetDbPath() string {
 	if data := help.GetEnv("DB_DIR"); data != "" {
 		return strings.TrimSpace(data) + "/usdtmore.db"
 	}
 	return runPath + "/usdtmore.db"
+}
+
+/*
+是否使用PostgreSQL数据库
+*/
+func UsePostgreSQL() bool {
+	if data := help.GetEnv("DB_TYPE"); data != "" {
+		return strings.ToLower(strings.TrimSpace(data)) == "postgresql"
+	}
+	return false
+}
+
+/*
+获取PostgreSQL连接DSN
+*/
+func GetPostgreSQLDSN() string {
+	if dsn := help.GetEnv("POSTGRESQL_DSN"); dsn != "" {
+		return strings.TrimSpace(dsn)
+	}
+	
+	// 从单独的环境变量构建DSN
+	host := GetPostgreSQLHost()
+	port := GetPostgreSQLPort()
+	user := GetPostgreSQLUser()
+	password := GetPostgreSQLPassword()
+	dbname := GetPostgreSQLDatabase()
+	sslmode := GetPostgreSQLSSLMode()
+	timezone := GetPostgreSQLTimeZone()
+	
+	return fmt.Sprintf("host=%s port=%s user=%s password=%s dbname=%s sslmode=%s TimeZone=%s", 
+		host, port, user, password, dbname, sslmode, timezone)
+}
+
+/*
+获取环境变量，如果不存在则返回默认值
+*/
+func getEnvWithDefault(key, defaultValue string) string {
+	if value := help.GetEnv(key); value != "" {
+		return strings.TrimSpace(value)
+	}
+	return defaultValue
+}
+
+/*
+获取数据库类型
+*/
+func GetDatabaseType() string {
+	dbType := strings.ToLower(strings.TrimSpace(help.GetEnv("DB_TYPE")))
+	if dbType == "postgresql" || dbType == "postgres" {
+		return "postgresql"
+	}
+	return "sqlite"
+}
+
+/*
+是否使用SQLite数据库
+*/
+func UseSQLite() bool {
+	return GetDatabaseType() == "sqlite"
+}
+
+/*
+获取PostgreSQL主机地址
+*/
+func GetPostgreSQLHost() string {
+	return getEnvWithDefault("DB_HOST", "localhost")
+}
+
+/*
+获取PostgreSQL端口
+*/
+func GetPostgreSQLPort() string {
+	return getEnvWithDefault("DB_PORT", "5432")
+}
+
+/*
+获取PostgreSQL用户名
+*/
+func GetPostgreSQLUser() string {
+	return getEnvWithDefault("DB_USER", "postgres")
+}
+
+/*
+获取PostgreSQL密码
+*/
+func GetPostgreSQLPassword() string {
+	return help.GetEnv("DB_PASSWORD")
+}
+
+/*
+获取PostgreSQL数据库名
+*/
+func GetPostgreSQLDatabase() string {
+	return getEnvWithDefault("DB_NAME", "usdtmore")
+}
+
+/*
+获取PostgreSQL SSL模式
+*/
+func GetPostgreSQLSSLMode() string {
+	return getEnvWithDefault("DB_SSLMODE", "disable")
+}
+
+/*
+获取PostgreSQL时区
+*/
+func GetPostgreSQLTimeZone() string {
+	return getEnvWithDefault("DB_TIMEZONE", "Asia/Shanghai")
+}
+
+/*
+获取PostgreSQL连接超时时间
+*/
+func GetPostgreSQLConnectTimeout() string {
+	return getEnvWithDefault("DB_CONNECT_TIMEOUT", "10")
+}
+
+/*
+获取PostgreSQL应用程序名称
+*/
+func GetPostgreSQLAppName() string {
+	return getEnvWithDefault("DB_APP_NAME", "usdtmore")
+}
+
+/*
+获取完整的PostgreSQL连接DSN（包含所有可选参数）
+*/
+func GetPostgreSQLFullDSN() string {
+	if dsn := help.GetEnv("POSTGRESQL_DSN"); dsn != "" {
+		return strings.TrimSpace(dsn)
+	}
+	
+	// 构建完整DSN
+	host := GetPostgreSQLHost()
+	port := GetPostgreSQLPort()
+	user := GetPostgreSQLUser()
+	password := GetPostgreSQLPassword()
+	dbname := GetPostgreSQLDatabase()
+	sslmode := GetPostgreSQLSSLMode()
+	timezone := GetPostgreSQLTimeZone()
+	connectTimeout := GetPostgreSQLConnectTimeout()
+	appName := GetPostgreSQLAppName()
+	
+	return fmt.Sprintf("host=%s port=%s user=%s password=%s dbname=%s sslmode=%s TimeZone=%s connect_timeout=%s application_name=%s", 
+		host, port, user, password, dbname, sslmode, timezone, connectTimeout, appName)
+}
+
+/*
+获取数据库连接字符串（根据数据库类型返回相应的连接字符串）
+*/
+func GetDatabaseConnectionString() string {
+	if UsePostgreSQL() {
+		return GetPostgreSQLDSN()
+	}
+	return GetDbPath()
+}
+
+/*
+数据库调试模式
+*/
+func GetDbDebug() bool {
+	if data := help.GetEnv("DB_DEBUG"); data != "" {
+		return data == "1" || data == "true"
+	}
+	return false
+}
+
+/*
+数据库最大空闲连接数
+*/
+func GetDbMaxIdleConns() int {
+	if data := help.GetEnv("DB_MAX_IDLE_CONNS"); data != "" {
+		if num, err := strconv.Atoi(data); err == nil && num > 0 {
+			return num
+		}
+	}
+	return 10
+}
+
+/*
+数据库最大开放连接数
+*/
+func GetDbMaxOpenConns() int {
+	if data := help.GetEnv("DB_MAX_OPEN_CONNS"); data != "" {
+		if num, err := strconv.Atoi(data); err == nil && num > 0 {
+			return num
+		}
+	}
+	return 100
+}
+
+/*
+数据库连接最大生存时间
+*/
+func GetDbConnMaxLifetime() time.Duration {
+	if data := help.GetEnv("DB_CONN_MAX_LIFETIME"); data != "" {
+		if duration, err := time.ParseDuration(data); err == nil {
+			return duration
+		}
+	}
+	return 5 * time.Minute
+}
+
+/*
+数据库连接最大空闲时间
+*/
+func GetDbConnMaxIdleTime() time.Duration {
+	if data := help.GetEnv("DB_CONN_MAX_IDLE_TIME"); data != "" {
+		if duration, err := time.ParseDuration(data); err == nil {
+			return duration
+		}
+	}
+	return 1 * time.Minute
+}
+
+/*
+数据库备份路径
+*/
+func GetDbBackupPath() string {
+	if data := help.GetEnv("DB_BACKUP_DIR"); data != "" {
+		return strings.TrimSpace(data)
+	}
+	return runPath + "/backups"
+}
+
+/*
+数据库备份保留天数
+*/
+func GetDbBackupRetentionDays() int {
+	if data := help.GetEnv("DB_BACKUP_RETENTION_DAYS"); data != "" {
+		if num, err := strconv.Atoi(data); err == nil && num > 0 {
+			return num
+		}
+	}
+	return 7
+}
+
+/*
+是否启用数据库监控
+*/
+func IsDbMonitoringEnabled() bool {
+	if data := help.GetEnv("DB_MONITORING_ENABLED"); data != "" {
+		return data == "1" || data == "true"
+	}
+	return false
+}
+
+/*
+数据库监控间隔
+*/
+func GetDbMonitoringInterval() time.Duration {
+	if data := help.GetEnv("DB_MONITORING_INTERVAL"); data != "" {
+		if duration, err := time.ParseDuration(data); err == nil {
+			return duration
+		}
+	}
+	return 30 * time.Second
+}
+
+/*
+数据库慢查询阈值
+*/
+func GetDbSlowQueryThreshold() time.Duration {
+	if data := help.GetEnv("DB_SLOW_QUERY_THRESHOLD"); data != "" {
+		if duration, err := time.ParseDuration(data); err == nil {
+			return duration
+		}
+	}
+	return 1 * time.Second
 }
 
 /*

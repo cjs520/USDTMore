@@ -7,6 +7,7 @@ import (
 	"USDTMore/app/model"
 	"USDTMore/app/notify"
 	"USDTMore/app/telegram"
+	"context"
 	"fmt"
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 	"github.com/shopspring/decimal"
@@ -23,10 +24,18 @@ import (
 // okX的智能合约地址
 const usdtToken = "TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t"
 
-func TradeStart() {
+func TradeStart(ctx context.Context) {
 	log.Info("交易监控启动.")
+	
+	ticker := time.NewTicker(5 * time.Second)
+	defer ticker.Stop()
 
-	for range time.Tick(time.Second * 5) {
+	for {
+		select {
+		case <-ctx.Done():
+			log.Info("交易监控收到关闭信号，正在退出...")
+			return
+		case <-ticker.C:
 		var recentTransferTotal float64
 		var _lock, err = getAllPendingOrders()
 		if err != nil {
@@ -171,6 +180,7 @@ func TradeStart() {
 
 			handlePaymentTransactionForAptos(_lock, _row.Address, result)
 			handleOtherNotifyForAptos(_row.Address, result)
+		}
 		}
 	}
 }
@@ -635,7 +645,7 @@ func handleOtherNotifyForXLayerScan(_toAddress string, result gjson.Result) {
 // 搜索交易记录 TronScan
 func getUsdtTrc20TransByTronScan(_toAddress string) (gjson.Result, error) {
 	var now = time.Now()
-	var client = &http.Client{Timeout: time.Second * 15}
+	var client = help.GetDefaultClient()
 	req, err := http.NewRequest("GET", "https://apilist.tronscanapi.com/api/new/token_trc20/transfers", nil)
 	if err != nil {
 		return gjson.Result{}, fmt.Errorf("处理请求创建错误: %w", err)
@@ -689,7 +699,7 @@ func getUsdtTrc20TransByTronScan(_toAddress string) (gjson.Result, error) {
 // 搜索交易记录 TronGrid
 func getUsdtTrc20TransByTronGrid(_toAddress string) (gjson.Result, error) {
 	var now = time.Now()
-	var client = &http.Client{Timeout: time.Second * 15}
+	var client = help.GetDefaultClient()
 	req, err := http.NewRequest("GET", fmt.Sprintf("https://api.trongrid.io/v1/accounts/%s/transactions/trc20", _toAddress), nil)
 	if err != nil {
 
@@ -749,7 +759,7 @@ func getUsdtTrc20TransByTronGrid(_toAddress string) (gjson.Result, error) {
 */
 func requestAddress(baseUrl string, query string) []byte {
 	var url = baseUrl + "?" + query
-	var client = http.Client{Timeout: time.Second * 5}
+	var client = help.GetShortTimeoutClient()
 	resp, err := client.Get(url)
 	if err != nil {
 		log.Error("GetWalletInfoByAddress client.Get(url)", err)
@@ -882,7 +892,7 @@ func getUsdtXLayerTransByXLayerScan(_toAddress string) (gjson.Result, error) {
 
 // Solana链USDT交易查询
 func getUsdtSolanaTransBySolscan(_toAddress string) (gjson.Result, error) {
-	var client = &http.Client{Timeout: time.Second * 15}
+	var client = help.GetDefaultClient()
 	
 	// 使用Solscan API查询SPL Token交易
 	apiUrl := fmt.Sprintf("https://public-api.solscan.io/account/splTransfers?account=%s&limit=50", _toAddress)
@@ -917,7 +927,7 @@ func getUsdtSolanaTransBySolscan(_toAddress string) (gjson.Result, error) {
 
 // Aptos链USDT交易查询
 func getUsdtAptosTransByAptosLabs(_toAddress string) (gjson.Result, error) {
-	var client = &http.Client{Timeout: time.Second * 15}
+	var client = help.GetDefaultClient()
 	
 	// 使用Aptos官方API查询代币交易
 	apiUrl := fmt.Sprintf("https://fullnode.mainnet.aptoslabs.com/v1/accounts/%s/transactions?limit=50", _toAddress)

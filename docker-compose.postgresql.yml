@@ -1,0 +1,204 @@
+version: '3.8'
+
+# USDTMore PostgreSQL 高可用部署配置
+# 作者: Database Administrator
+# 创建时间: 2025-09-10
+
+services:
+  # PostgreSQL 主数据库
+  postgres-primary:
+    image: postgres:15-alpine
+    container_name: usdtmore-postgres-primary
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: usdtmore
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-changeme123}
+      POSTGRES_INITDB_ARGS: "--encoding=UTF8 --locale=C"
+      # 复制相关配置
+      POSTGRES_REPLICA_USER: replica
+      POSTGRES_REPLICA_PASSWORD: ${REPLICA_PASSWORD:-replica123}
+    volumes:
+      - postgres_primary_data:/var/lib/postgresql/data
+      - ./migrations:/docker-entrypoint-initdb.d/
+      - ./config/postgresql.conf:/etc/postgresql/postgresql.conf:ro
+      - ./config/pg_hba.conf:/etc/postgresql/pg_hba.conf:ro
+    ports:
+      - "5432:5432"
+    networks:
+      - usdtmore-network
+    command: >
+      postgres 
+      -c config_file=/etc/postgresql/postgresql.conf
+      -c hba_file=/etc/postgresql/pg_hba.conf
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d usdtmore"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # PostgreSQL 只读副本 (可选)
+  postgres-replica:
+    image: postgres:15-alpine
+    container_name: usdtmore-postgres-replica
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-changeme123}
+      PGUSER: postgres
+      POSTGRES_DB: usdtmore
+      POSTGRES_MASTER_SERVICE: postgres-primary
+      POSTGRES_REPLICA_USER: replica
+      POSTGRES_REPLICA_PASSWORD: ${REPLICA_PASSWORD:-replica123}
+    volumes:
+      - postgres_replica_data:/var/lib/postgresql/data
+      - ./scripts/setup_replica.sh:/docker-entrypoint-initdb.d/setup_replica.sh
+    ports:
+      - "5433:5432"
+    depends_on:
+      postgres-primary:
+        condition: service_healthy
+    networks:
+      - usdtmore-network
+    profiles:
+      - replica
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d usdtmore"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+
+  # PgBouncer 连接池
+  pgbouncer:
+    image: pgbouncer/pgbouncer:latest
+    container_name: usdtmore-pgbouncer
+    restart: unless-stopped
+    environment:
+      DATABASES_HOST: postgres-primary
+      DATABASES_PORT: 5432
+      DATABASES_USER: postgres
+      DATABASES_PASSWORD: ${DB_PASSWORD:-changeme123}
+      DATABASES_DBNAME: usdtmore
+      POOL_MODE: transaction
+      SERVER_RESET_QUERY: DISCARD ALL
+      MAX_CLIENT_CONN: 100
+      DEFAULT_POOL_SIZE: 20
+      MIN_POOL_SIZE: 5
+      RESERVE_POOL_SIZE: 5
+      LISTEN_PORT: 5432
+    ports:
+      - "6432:5432"
+    depends_on:
+      postgres-primary:
+        condition: service_healthy
+    networks:
+      - usdtmore-network
+    healthcheck:
+      test: ["CMD-SHELL", "psql -h localhost -p 5432 -U postgres -d usdtmore -c 'SELECT 1'"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+  # Redis (缓存和会话)
+  redis:
+    image: redis:7-alpine
+    container_name: usdtmore-redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+      - ./config/redis.conf:/etc/redis/redis.conf:ro
+    command: redis-server /etc/redis/redis.conf
+    networks:
+      - usdtmore-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+      start_period: 10s
+
+  # 监控 - Prometheus
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: usdtmore-prometheus
+    restart: unless-stopped
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--storage.tsdb.retention.time=30d'
+      - '--web.console.libraries=/usr/share/prometheus/console_libraries'
+      - '--web.console.templates=/usr/share/prometheus/consoles'
+      - '--web.enable-lifecycle'
+    networks:
+      - usdtmore-network
+    profiles:
+      - monitoring
+
+  # 监控 - Grafana
+  grafana:
+    image: grafana/grafana:latest
+    container_name: usdtmore-grafana
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_PASSWORD:-admin123}
+      - GF_INSTALL_PLUGINS=grafana-piechart-panel
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./monitoring/grafana/dashboards:/etc/grafana/provisioning/dashboards:ro
+      - ./monitoring/grafana/datasources:/etc/grafana/provisioning/datasources:ro
+    depends_on:
+      - prometheus
+    networks:
+      - usdtmore-network
+    profiles:
+      - monitoring
+
+  # PostgreSQL Exporter (Prometheus监控)
+  postgres-exporter:
+    image: prometheuscommunity/postgres-exporter:latest
+    container_name: usdtmore-postgres-exporter
+    restart: unless-stopped
+    environment:
+      DATA_SOURCE_NAME: "postgresql://postgres:${DB_PASSWORD:-changeme123}@postgres-primary:5432/usdtmore?sslmode=disable"
+    ports:
+      - "9187:9187"
+    depends_on:
+      postgres-primary:
+        condition: service_healthy
+    networks:
+      - usdtmore-network
+    profiles:
+      - monitoring
+
+volumes:
+  postgres_primary_data:
+    driver: local
+  postgres_replica_data:
+    driver: local
+  redis_data:
+    driver: local
+  prometheus_data:
+    driver: local
+  grafana_data:
+    driver: local
+
+networks:
+  usdtmore-network:
+    driver: bridge

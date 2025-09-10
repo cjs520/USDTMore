@@ -4,11 +4,15 @@ import (
 	"USDTMore/app/config"
 	"USDTMore/app/help"
 	"USDTMore/app/log"
+	"context"
+	"net/http"
+	"time"
 	"github.com/gin-gonic/gin"
 	"github.com/goccy/go-json"
 )
 
-func Start() {
+func Start(ctx context.Context) {
+	log.Info("Web服务启动.")
 	gin.SetMode(gin.ReleaseMode)
 
 	listen := config.GetListen()
@@ -83,9 +87,31 @@ func Start() {
 		orderRoute.POST("/create-transaction", CreateTransaction)
 	}
 
-	log.Info("Web启动 Listen: ", listen)
-	err := r.Run(listen)
-	if err != nil {
-		log.Error(err.Error())
+	// 创建HTTP服务器
+	server := &http.Server{
+		Addr:    listen,
+		Handler: r,
+	}
+
+	// 在goroutine中启动服务器
+	go func() {
+		log.Info("Web启动 Listen: ", listen)
+		if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			log.Error("Web服务启动失败:", err)
+		}
+	}()
+
+	// 等待关闭信号
+	<-ctx.Done()
+	log.Info("Web服务收到关闭信号，正在优雅关闭...")
+
+	// 优雅关闭服务器
+	shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	if err := server.Shutdown(shutdownCtx); err != nil {
+		log.Error("Web服务关闭失败:", err)
+	} else {
+		log.Info("Web服务已优雅关闭")
 	}
 }

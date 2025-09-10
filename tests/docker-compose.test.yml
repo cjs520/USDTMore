@@ -1,0 +1,142 @@
+# Docker Compose 配置文件用于数据库迁移测试
+# Docker Compose configuration for database migration testing
+
+version: '3.8'
+
+services:
+  # PostgreSQL 测试数据库
+  postgres-test:
+    image: postgres:15-alpine
+    container_name: usdtmore-postgres-test
+    environment:
+      POSTGRES_DB: usdtmore_test
+      POSTGRES_USER: test_user
+      POSTGRES_PASSWORD: test123456
+      POSTGRES_HOST_AUTH_METHOD: scram-sha-256
+      POSTGRES_INITDB_ARGS: "--auth-host=scram-sha-256"
+    ports:
+      - "5433:5432"  # 使用5433避免与系统PostgreSQL冲突
+    volumes:
+      - postgres_test_data:/var/lib/postgresql/data
+      - ./sql/init:/docker-entrypoint-initdb.d
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U test_user -d usdtmore_test"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    networks:
+      - test-network
+    restart: unless-stopped
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # Redis 测试缓存（可选，用于缓存相关测试）
+  redis-test:
+    image: redis:7-alpine
+    container_name: usdtmore-redis-test
+    ports:
+      - "6380:6379"  # 使用6380避免与系统Redis冲突
+    volumes:
+      - redis_test_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - test-network
+    restart: unless-stopped
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "5m"
+        max-file: "2"
+
+  # 测试运行器容器
+  test-runner:
+    build:
+      context: ../
+      dockerfile: tests/Dockerfile.test
+    container_name: usdtmore-test-runner
+    depends_on:
+      postgres-test:
+        condition: service_healthy
+      redis-test:
+        condition: service_healthy
+    environment:
+      # PostgreSQL 测试配置
+      DB_TYPE: postgresql
+      DB_HOST: postgres-test
+      DB_PORT: 5432
+      DB_USER: test_user
+      DB_PASSWORD: test123456
+      DB_NAME: usdtmore_test
+      DB_SSLMODE: disable
+      DB_TIMEZONE: Asia/Shanghai
+      
+      # 测试配置
+      DB_DEBUG: "true"
+      TEST_ENV: "true"
+      TEST_MODE: database_migration
+      
+      # 性能测试配置
+      PERF_TEST_BATCH_SIZE: 500
+      PERF_TEST_CONCURRENT_WORKERS: 5
+      PERF_TEST_OPS_PER_WORKER: 25
+      
+      # Redis 配置（如果需要）
+      REDIS_HOST: redis-test
+      REDIS_PORT: 6379
+    volumes:
+      - ../:/app
+      - test_logs:/app/test_logs
+      - test_data:/app/test_data
+    working_dir: /app
+    networks:
+      - test-network
+    profiles:
+      - test  # 仅在test profile时启动
+    command: ["sleep", "infinity"]  # 保持容器运行以便手动执行测试
+
+  # PgAdmin 管理界面（可选，用于调试）
+  pgadmin:
+    image: dpage/pgadmin4:latest
+    container_name: usdtmore-pgadmin-test
+    environment:
+      PGADMIN_DEFAULT_EMAIL: admin@test.com
+      PGADMIN_DEFAULT_PASSWORD: admin123
+      PGADMIN_CONFIG_SERVER_MODE: 'False'
+    ports:
+      - "8081:80"
+    volumes:
+      - pgadmin_data:/var/lib/pgadmin
+    depends_on:
+      - postgres-test
+    networks:
+      - test-network
+    profiles:
+      - admin  # 仅在admin profile时启动
+    restart: unless-stopped
+
+volumes:
+  postgres_test_data:
+    driver: local
+  redis_test_data:
+    driver: local
+  pgadmin_data:
+    driver: local
+  test_logs:
+    driver: local
+  test_data:
+    driver: local
+
+networks:
+  test-network:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.20.0.0/16

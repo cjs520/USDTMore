@@ -2,6 +2,7 @@ package telegram
 
 import (
 	"USDTMore/app/config"
+	"USDTMore/app/log"
 	"fmt"
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 	"strconv"
@@ -13,13 +14,14 @@ var err error
 func init() {
 	var token = config.GetTGBotToken()
 	if token == "" {
-
+		log.Warn("TG_BOT_TOKEN未配置，Telegram Bot功能将不可用")
 		return
 	}
 
 	botApi, err = tgbotapi.NewBotAPI(token)
 	if err != nil {
-		panic("TG Bot NewBotAPI Error:" + err.Error())
+		log.Error("TG Bot NewBotAPI Error:", err)
+		return
 	}
 
 	// 注册命令
@@ -31,7 +33,8 @@ func init() {
 		{Command: "/" + cmdOrder, Description: "最近订单"},
 	}...))
 	if err != nil {
-		panic("TG Bot Request Error:" + err.Error())
+		log.Error("TG Bot Request Error:", err)
+		return
 	}
 
 	fmt.Println("Bot UserName: ", botApi.Self.UserName)

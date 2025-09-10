@@ -248,7 +248,7 @@ func getWalletInfoByTRONGridAPI(address string) string {
 	}
 
 	var url = "https://api.trongrid.io/v1/accounts/" + address
-	var client = http.Client{Timeout: time.Second * 10}
+	var client = help.GetHTTPClientManager().GetClient(10 * time.Second)
 	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
 		log.Error("创建TRON API请求失败:", err)
@@ -330,7 +330,7 @@ func getWalletInfoByTRONScanAPI(address string) string {
 	}
 
 	var url = "https://apilist.tronscanapi.com/api/accountv2?address=" + address
-	var client = http.Client{Timeout: time.Second * 10}
+	var client = help.GetHTTPClientManager().GetClient(10 * time.Second)
 	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
 		log.Error("创建TRON Scan API请求失败:", err)
@@ -399,7 +399,7 @@ func getTronUSDTBalance(address string) float64 {
 	var usdtContract = "TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t"
 	var url = fmt.Sprintf("https://api.trongrid.io/v1/contracts/%s/triggers", usdtContract)
 	
-	var client = http.Client{Timeout: time.Second * 10}
+	var client = help.GetHTTPClientManager().GetClient(10 * time.Second)
 	req, err := http.NewRequest("GET", url+"?owner_address="+address, nil)
 	if err != nil {
 		return 0
@@ -441,7 +441,7 @@ func getTronTRC20Balance(address, contract string) float64 {
 */
 func requestAddress(baseUrl string, query string) []byte {
 	var url = baseUrl + "?" + query
-	var client = http.Client{Timeout: time.Second * 5}
+	var client = help.GetShortTimeoutClient()
 	resp, err := client.Get(url)
 	if err != nil {
 		log.Error("GetWalletInfoByAddress client.Get(url)", err)

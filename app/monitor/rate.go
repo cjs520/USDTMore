@@ -2,8 +2,10 @@ package monitor
 
 import (
 	"USDTMore/app/config"
+	"USDTMore/app/help"
 	"USDTMore/app/log"
 	"USDTMore/app/usdt"
+	"context"
 	"errors"
 	"fmt"
 	"github.com/shopspring/decimal"
@@ -15,34 +17,42 @@ import (
 )
 
 // OkxUsdtRateStart Okx USDT 汇率监控，避免频繁请求
-func OkxUsdtRateStart() {
+func OkxUsdtRateStart(ctx context.Context) {
+	log.Info("汇率监控启动.")
 	var _act, _value, _defaultRate = config.GetUsdtRate()
+	
+	ticker := time.NewTicker(time.Minute)
+	defer ticker.Stop()
+
 	for {
-		if _act == "" {
-			usdt.SetLatestRate(_defaultRate)
+		select {
+		case <-ctx.Done():
+			log.Info("汇率监控收到关闭信号，正在退出...")
+			return
+		case <-ticker.C:
+			if _act == "" {
+				usdt.SetLatestRate(_defaultRate)
+				log.Info("固定汇率", usdt.GetLatestRate())
+			} else {
+				_okxRate, _okxErr := getOkxUsdtCnySellPrice()
+				if _okxErr == nil { // 获取成功
+					usdt.SetOkxLatestRate(_okxRate.InexactFloat64())
 
-			log.Info("固定汇率", usdt.GetLatestRate())
-		} else {
-			_okxRate, _okxErr := getOkxUsdtCnySellPrice()
-			if _okxErr == nil { // 获取成功
-				usdt.SetOkxLatestRate(_okxRate.InexactFloat64())
+					switch _act {
+					case "~":
+						usdt.SetLatestRate(_okxRate.Mul(_value).InexactFloat64())
+					case "+":
+						usdt.SetLatestRate(_okxRate.Add(_value).InexactFloat64())
+					case "-":
+						usdt.SetLatestRate(_okxRate.Sub(_value).InexactFloat64())
+					default:
+						usdt.SetLatestRate(_okxRate.InexactFloat64())
+					}
 
-				switch _act {
-				case "~":
-					usdt.SetLatestRate(_okxRate.Mul(_value).InexactFloat64())
-				case "+":
-					usdt.SetLatestRate(_okxRate.Add(_value).InexactFloat64())
-				case "-":
-					usdt.SetLatestRate(_okxRate.Sub(_value).InexactFloat64())
-				default:
-					usdt.SetLatestRate(_okxRate.InexactFloat64())
+					log.Info(fmt.Sprintf("okx rate: %v act(%v) value(%v) 最终实际汇率：%v", _okxRate, _act, _value, usdt.GetLatestRate()))
 				}
-
-				log.Info(fmt.Sprintf("okx rate: %v act(%v) value(%v) 最终实际汇率：%v", _okxRate, _act, _value, usdt.GetLatestRate()))
 			}
 		}
-
-		time.Sleep(time.Minute)
 	}
 }
 
@@ -51,7 +61,7 @@ func getOkxUsdtCnySellPrice() (decimal.Decimal, error) {
 	var _zero = decimal.NewFromInt(0)
 	var t = strconv.Itoa(int(time.Now().Unix()))
 	var okxApi = "https://www.okx.com/v4/c2c/express/price?crypto=USDT&fiat=CNY&side=sell&t=" + t
-	client := http.Client{Timeout: time.Second * 5}
+	client := help.GetShortTimeoutClient()
 	req, _ := http.NewRequest("GET", okxApi, nil)
 	req.Header.Set("User-Agent", "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/117.0.0.0 Safari/537.36")
 	resp, err := client.Do(req)

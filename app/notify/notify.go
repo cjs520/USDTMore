@@ -10,7 +10,6 @@ import (
 	"io"
 	"net/http"
 	"strings"
-	"time"
 )
 
 func OrderNotify(order model.TradeOrders) {
@@ -51,7 +50,7 @@ func OrderNotify(order model.TradeOrders) {
 
 	// 再次序列化
 	jsonBody, err = json.Marshal(body)
-	var client = http.Client{Timeout: time.Second * 5}
+	var client = help.GetShortTimeoutClient()
 	var postReq, err2 = http.NewRequest("POST", order.NotifyUrl, strings.NewReader(string(jsonBody)))
 	if err2 != nil {
 		log.Error("Notify NewRequest Error：", err)
