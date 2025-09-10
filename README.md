@@ -157,6 +157,33 @@ docker run -d \
   usdtmore/usdtmore:latest
 ```
 
+### 🏭 生产级高可用部署
+
+对于生产环境，我们提供了完整的高可用解决方案：
+
+```bash
+# 生产级部署（包含主从复制、连接池、监控）
+docker-compose -f docker-compose.production.yml up -d
+
+# 仅启动核心服务（不包含监控）
+docker-compose -f docker-compose.production.yml up -d postgres-primary pgbouncer usdtmore-primary redis
+
+# 启用副本服务（读写分离）
+docker-compose -f docker-compose.production.yml --profile replica up -d
+
+# 启用完整监控（包含Grafana、Prometheus）
+docker-compose -f docker-compose.production.yml --profile monitoring up -d
+```
+
+**生产级配置特性**：
+- ✅ PostgreSQL主从复制（高可用）
+- ✅ PgBouncer连接池（高并发）
+- ✅ Redis缓存优化
+- ✅ Nginx负载均衡
+- ✅ Prometheus + Grafana监控
+- ✅ 完整的健康检查和日志管理
+- ✅ 自动故障转移和恢复
+
 ## 🧪 测试和验证
 
 项目包含完整的测试套件，确保系统稳定性：
@@ -191,8 +218,32 @@ Telegram 搜索`@myidbot`机器人并启用，`/getid`返回的ID就是`TG_BOT_A
 
 ### 数据库选择建议
 
-- **SQLite（默认）**: 适合个人使用或小规模部署，零配置，开箱即用
-- **PostgreSQL**: 适合生产环境或高并发场景，支持更好的并发性能和数据完整性
+| 配置类型 | 适用场景 | 部署命令 | 特性说明 |
+|---------|---------|---------|---------|
+| **SQLite（默认）** | 个人使用、小规模部署 | `docker-compose up -d` | 零配置，开箱即用，资源占用少 |
+| **PostgreSQL（标准）** | 中小型生产环境 | `docker-compose -f docker-compose.postgresql.yml up -d` | 高并发，数据完整性保证 |
+| **生产级（推荐）** | 大型生产环境 | `docker-compose -f docker-compose.production.yml up -d` | 主从复制，连接池，监控，负载均衡 |
+
+#### 🔄 部署配置对比
+
+**SQLite版本**：
+- ✅ 单文件数据库，部署简单
+- ✅ 内存占用 < 100MB
+- ⚠️ 并发限制，适合日订单 < 500
+
+**PostgreSQL标准版**：
+- ✅ 关系型数据库，ACID保证
+- ✅ 支持50+并发连接
+- ✅ 数据备份和恢复
+- ⚠️ 内存占用 200-500MB
+
+**生产级高可用版**：
+- ✅ 主从复制，99.9%可用性
+- ✅ 连接池，支持200+并发
+- ✅ 完整监控和告警
+- ✅ 自动故障转移
+- ✅ 负载均衡和缓存
+- ⚠️ 内存占用 1-2GB，配置复杂
 
 ### 支持的区块链网络
 

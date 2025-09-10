@@ -1,0 +1,459 @@
+version: '3.8'
+
+# USDTMore 生产级高可用部署配置
+# 适用场景：高并发、高可用生产环境
+# 特性：主从复制、连接池、监控、缓存、负载均衡
+
+services:
+  # PostgreSQL 主数据库
+  postgres-primary:
+    image: postgres:15-alpine
+    container_name: usdtmore_postgres_primary
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: usdtmore
+      POSTGRES_USER: usdtmore_user
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-your_secure_password_here}
+      POSTGRES_INITDB_ARGS: "--encoding=UTF-8 --lc-collate=C --lc-ctype=C"
+      # 复制配置
+      POSTGRES_REPLICA_USER: replica_user
+      POSTGRES_REPLICA_PASSWORD: ${REPLICA_PASSWORD:-replica_secure_password}
+    volumes:
+      - postgres_primary_data:/var/lib/postgresql/data
+      - ./config/postgresql-primary.conf:/etc/postgresql/postgresql.conf:ro
+      - ./config/pg_hba.conf:/etc/postgresql/pg_hba.conf:ro
+      - ./scripts/init-replica.sql:/docker-entrypoint-initdb.d/init-replica.sql:ro
+    ports:
+      - "5432:5432"
+    command: >
+      postgres 
+      -c config_file=/etc/postgresql/postgresql.conf
+      -c hba_file=/etc/postgresql/pg_hba.conf
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U usdtmore_user -d usdtmore"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    networks:
+      - usdtmore_network
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "50m"
+        max-file: "3"
+
+  # PostgreSQL 只读副本
+  postgres-replica:
+    image: postgres:15-alpine
+    container_name: usdtmore_postgres_replica
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: usdtmore_user
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-your_secure_password_here}
+      POSTGRES_DB: usdtmore
+      POSTGRES_PRIMARY_HOST: postgres-primary
+      POSTGRES_PRIMARY_PORT: 5432
+      POSTGRES_REPLICA_USER: replica_user
+      POSTGRES_REPLICA_PASSWORD: ${REPLICA_PASSWORD:-replica_secure_password}
+    volumes:
+      - postgres_replica_data:/var/lib/postgresql/data
+      - ./scripts/setup-replica.sh:/docker-entrypoint-initdb.d/setup-replica.sh:ro
+    ports:
+      - "5433:5432"
+    depends_on:
+      postgres-primary:
+        condition: service_healthy
+    networks:
+      - usdtmore_network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U usdtmore_user -d usdtmore"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 60s
+
+  # PgBouncer 连接池
+  pgbouncer:
+    image: pgbouncer/pgbouncer:latest
+    container_name: usdtmore_pgbouncer
+    restart: unless-stopped
+    environment:
+      DATABASES_HOST: postgres-primary
+      DATABASES_PORT: 5432
+      DATABASES_USER: usdtmore_user
+      DATABASES_PASSWORD: ${DB_PASSWORD:-your_secure_password_here}
+      DATABASES_DBNAME: usdtmore
+      POOL_MODE: transaction
+      SERVER_RESET_QUERY: DISCARD ALL
+      MAX_CLIENT_CONN: 200
+      DEFAULT_POOL_SIZE: 25
+      MIN_POOL_SIZE: 10
+      RESERVE_POOL_SIZE: 10
+      SERVER_LIFETIME: 3600
+      SERVER_IDLE_TIMEOUT: 600
+      LISTEN_PORT: 5432
+      ADMIN_USERS: usdtmore_user
+      STATS_USERS: usdtmore_user
+    ports:
+      - "6432:5432"
+    depends_on:
+      postgres-primary:
+        condition: service_healthy
+    networks:
+      - usdtmore_network
+    healthcheck:
+      test: ["CMD-SHELL", "psql -h localhost -p 5432 -U usdtmore_user -d usdtmore -c 'SELECT 1'"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+
+  # USDTMore 应用 (主实例)
+  usdtmore-primary:
+    image: zxzx412/usdtmore:latest
+    container_name: usdtmore_primary
+    restart: unless-stopped
+    depends_on:
+      pgbouncer:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    ports:
+      - "6080:6080"
+    environment:
+      # ===== 数据库配置 (通过PgBouncer连接) =====
+      DB_TYPE: "postgresql"
+      DB_HOST: "pgbouncer"
+      DB_PORT: "5432"
+      DB_USER: "usdtmore_user"
+      DB_PASSWORD: ${DB_PASSWORD:-your_secure_password_here}
+      DB_NAME: "usdtmore"
+      DB_SSLMODE: "disable"
+      DB_TIMEZONE: "UTC"
+      
+      # ===== 高性能数据库连接池配置 =====
+      DB_MAX_IDLE_CONNS: "20"
+      DB_MAX_OPEN_CONNS: "200"
+      DB_CONN_MAX_LIFETIME: "10m"
+      DB_CONN_MAX_IDLE_TIME: "2m"
+      
+      # ===== 必需配置项 =====
+      TG_BOT_TOKEN: ${TG_BOT_TOKEN}
+      TG_BOT_ADMIN_ID: ${TG_BOT_ADMIN_ID}
+      
+      # ===== API Keys =====
+      ETHERSCAN_API_KEY: ${ETHERSCAN_API_KEY}
+      TRON_SCAN_API_KEY: ${TRON_SCAN_API_KEY}
+      SOLANA_API_KEY: ${SOLANA_API_KEY}
+      
+      # ===== 应用配置 =====
+      AUTH_TOKEN: ${AUTH_TOKEN:-your_auth_token}
+      APP_URI: ${APP_URI:-https://your-domain.com}
+      REWRITE_HTTPS: "true"
+      
+      # ===== 网络配置 =====
+      TRON_SERVER_API: "TRON_SCAN"
+      ETH_CONFIRMATION: "3"
+      TRADE_IS_CONFIRMED: "1"
+      
+      # ===== 支付配置 =====
+      PAYMENT_AMOUNT_RANGE: "0.01,99999"
+      EXPIRE_TIME: "1800"
+      
+      # ===== Redis 缓存配置 =====
+      REDIS_HOST: "redis"
+      REDIS_PORT: "6379"
+      REDIS_PASSWORD: ${REDIS_PASSWORD:-}
+      
+      # ===== 可选配置 =====
+      WALLET_ADDRESS: ${WALLET_ADDRESS:-}
+      TG_BOT_GROUP_ID: ${TG_BOT_GROUP_ID:-}
+      
+      # ===== 生产环境优化 =====
+      LOG_LEVEL: "INFO"
+      ENABLE_METRICS: "true"
+      METRICS_PORT: "9090"
+    volumes:
+      - usdtmore_logs:/app/logs
+      - usdtmore_data:/app/data
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:6080/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    networks:
+      - usdtmore_network
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "100m"
+        max-file: "5"
+
+  # USDTMore 应用 (副本实例，可选)
+  usdtmore-replica:
+    image: zxzx412/usdtmore:latest
+    container_name: usdtmore_replica
+    restart: unless-stopped
+    depends_on:
+      postgres-replica:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    ports:
+      - "6081:6080"
+    environment:
+      # 使用只读副本数据库
+      DB_TYPE: "postgresql"
+      DB_HOST: "postgres-replica"
+      DB_PORT: "5432"
+      DB_USER: "usdtmore_user"
+      DB_PASSWORD: ${DB_PASSWORD:-your_secure_password_here}
+      DB_NAME: "usdtmore"
+      DB_SSLMODE: "disable"
+      DB_TIMEZONE: "UTC"
+      DB_MAX_IDLE_CONNS: "10"
+      DB_MAX_OPEN_CONNS: "50"
+      DB_CONN_MAX_LIFETIME: "5m"
+      DB_CONN_MAX_IDLE_TIME: "1m"
+      
+      # 其他配置同主实例
+      TG_BOT_TOKEN: ${TG_BOT_TOKEN}
+      TG_BOT_ADMIN_ID: ${TG_BOT_ADMIN_ID}
+      ETHERSCAN_API_KEY: ${ETHERSCAN_API_KEY}
+      TRON_SCAN_API_KEY: ${TRON_SCAN_API_KEY}
+      SOLANA_API_KEY: ${SOLANA_API_KEY}
+      AUTH_TOKEN: ${AUTH_TOKEN:-your_auth_token}
+      APP_URI: ${APP_URI:-https://your-domain.com}
+      REWRITE_HTTPS: "true"
+      REDIS_HOST: "redis"
+      REDIS_PORT: "6379"
+      
+      # 只读模式标识
+      READ_ONLY_MODE: "true"
+      LOG_LEVEL: "INFO"
+    volumes:
+      - usdtmore_replica_logs:/app/logs
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:6080/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    networks:
+      - usdtmore_network
+    profiles:
+      - replica
+
+  # Redis 高性能缓存
+  redis:
+    image: redis:7-alpine
+    container_name: usdtmore_redis
+    restart: unless-stopped
+    command: >
+      redis-server
+      --appendonly yes
+      --maxmemory 1gb
+      --maxmemory-policy allkeys-lru
+      --tcp-keepalive 60
+      --timeout 300
+      --tcp-backlog 511
+      --save 900 1
+      --save 300 10
+      --save 60 10000
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD:-}
+    volumes:
+      - redis_data:/data
+      - ./config/redis.conf:/etc/redis/redis.conf:ro
+    ports:
+      - "6379:6379"
+    networks:
+      - usdtmore_network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+      start_period: 10s
+
+  # Nginx 负载均衡器
+  nginx:
+    image: nginx:alpine
+    container_name: usdtmore_nginx
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./config/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./ssl:/etc/nginx/ssl:ro
+      - nginx_logs:/var/log/nginx
+    depends_on:
+      - usdtmore-primary
+    networks:
+      - usdtmore_network
+    healthcheck:
+      test: ["CMD", "nginx", "-t"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Prometheus 监控
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: usdtmore_prometheus
+    restart: unless-stopped
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./monitoring/rules:/etc/prometheus/rules:ro
+      - prometheus_data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--storage.tsdb.retention.time=90d'
+      - '--storage.tsdb.retention.size=10GB'
+      - '--web.console.libraries=/usr/share/prometheus/console_libraries'
+      - '--web.console.templates=/usr/share/prometheus/consoles'
+      - '--web.enable-lifecycle'
+      - '--web.enable-admin-api'
+    networks:
+      - usdtmore_network
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:9090/-/healthy"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Grafana 可视化
+  grafana:
+    image: grafana/grafana:latest
+    container_name: usdtmore_grafana
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_PASSWORD:-admin123}
+      GF_INSTALL_PLUGINS: grafana-piechart-panel,grafana-worldmap-panel
+      GF_ANALYTICS_REPORTING_ENABLED: "false"
+      GF_ANALYTICS_CHECK_FOR_UPDATES: "false"
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_USERS_ALLOW_ORG_CREATE: "false"
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./monitoring/grafana/dashboards:/etc/grafana/provisioning/dashboards:ro
+      - ./monitoring/grafana/datasources:/etc/grafana/provisioning/datasources:ro
+      - ./monitoring/grafana/plugins:/var/lib/grafana/plugins
+    depends_on:
+      - prometheus
+    networks:
+      - usdtmore_network
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:3000/api/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # PostgreSQL Exporter
+  postgres-exporter:
+    image: prometheuscommunity/postgres-exporter:latest
+    container_name: usdtmore_postgres_exporter
+    restart: unless-stopped
+    environment:
+      DATA_SOURCE_NAME: "postgresql://usdtmore_user:${DB_PASSWORD:-your_secure_password_here}@postgres-primary:5432/usdtmore?sslmode=disable"
+      PG_EXPORTER_EXTEND_QUERY_PATH: "/etc/postgres_exporter/queries.yaml"
+    volumes:
+      - ./monitoring/postgres-queries.yaml:/etc/postgres_exporter/queries.yaml:ro
+    ports:
+      - "9187:9187"
+    depends_on:
+      postgres-primary:
+        condition: service_healthy
+    networks:
+      - usdtmore_network
+
+  # Redis Exporter
+  redis-exporter:
+    image: oliver006/redis_exporter:latest
+    container_name: usdtmore_redis_exporter
+    restart: unless-stopped
+    environment:
+      REDIS_ADDR: "redis://redis:6379"
+      REDIS_PASSWORD: ${REDIS_PASSWORD:-}
+    ports:
+      - "9121:9121"
+    depends_on:
+      redis:
+        condition: service_healthy
+    networks:
+      - usdtmore_network
+
+  # Node Exporter (系统监控)
+  node-exporter:
+    image: prom/node-exporter:latest
+    container_name: usdtmore_node_exporter
+    restart: unless-stopped
+    ports:
+      - "9100:9100"
+    volumes:
+      - /proc:/host/proc:ro
+      - /sys:/host/sys:ro
+      - /:/rootfs:ro
+    command:
+      - '--path.procfs=/host/proc'
+      - '--path.rootfs=/rootfs'
+      - '--path.sysfs=/host/sys'
+      - '--collector.filesystem.mount-points-exclude=^/(sys|proc|dev|host|etc)($$|/)'
+    networks:
+      - usdtmore_network
+
+  # AlertManager (告警管理)
+  alertmanager:
+    image: prom/alertmanager:latest
+    container_name: usdtmore_alertmanager
+    restart: unless-stopped
+    ports:
+      - "9093:9093"
+    volumes:
+      - ./monitoring/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
+      - alertmanager_data:/alertmanager
+    command:
+      - '--config.file=/etc/alertmanager/alertmanager.yml'
+      - '--storage.path=/alertmanager'
+      - '--web.external-url=http://localhost:9093'
+    depends_on:
+      - prometheus
+    networks:
+      - usdtmore_network
+
+volumes:
+  postgres_primary_data:
+    driver: local
+  postgres_replica_data:
+    driver: local
+  redis_data:
+    driver: local
+  usdtmore_logs:
+    driver: local
+  usdtmore_data:
+    driver: local
+  usdtmore_replica_logs:
+    driver: local
+  nginx_logs:
+    driver: local
+  prometheus_data:
+    driver: local
+  grafana_data:
+    driver: local
+  alertmanager_data:
+    driver: local
+
+networks:
+  usdtmore_network:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.20.0.0/16

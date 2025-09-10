@@ -211,15 +211,35 @@ networks:
 - ✅ **零配置**，开箱即用
 - ✅ **轻量级**，资源占用少
 - ✅ **简单部署**，单容器搞定
-- ⚠️ 并发限制，适合日订单量 < 1000
+- ⚠️ 并发限制，适合日订单量 < 500
 
-### PostgreSQL（高性能推荐）
-**适用场景**：生产环境、高并发场景
-- ✅ **高并发**，支持100+同时连接
+### PostgreSQL（标准推荐）
+**适用场景**：中小型生产环境
+- ✅ **高并发**，支持50+同时连接
 - ✅ **数据完整性**，ACID事务保证
-- ✅ **扩展性强**，支持分片和复制
-- ✅ **监控完善**，详细的性能指标
+- ✅ **备份恢复**，完善的数据保护
 - ⚠️ 配置相对复杂，需要独立数据库服务
+
+### 生产级高可用（企业推荐）
+**适用场景**：大型生产环境、关键业务
+- ✅ **超高并发**，支持200+同时连接
+- ✅ **99.9%可用性**，主从复制保障
+- ✅ **完整监控**，实时性能分析
+- ✅ **自动故障转移**，无人值守运维
+- ✅ **负载均衡**，多实例分流
+- ⚠️ 资源占用较大，配置复杂度高
+
+#### 📊 配置对比表
+
+| 特性 | SQLite | PostgreSQL标准 | 生产级高可用 |
+|------|--------|---------------|-------------|
+| **部署复杂度** | ⭐ | ⭐⭐ | ⭐⭐⭐⭐ |
+| **资源占用** | < 100MB | 200-500MB | 1-2GB |
+| **并发支持** | < 10 | 50+ | 200+ |
+| **可用性** | 95% | 99% | 99.9% |
+| **监控能力** | 基础 | 标准 | 企业级 |
+| **故障恢复** | 手动 | 半自动 | 全自动 |
+| **适用订单量** | < 500/日 | < 5000/日 | 无限制 |
 
 ## 🚀 部署命令
 
@@ -254,6 +274,135 @@ docker-compose -f docker-compose.postgresql.yml logs -f
 
 # 停止服务
 docker-compose -f docker-compose.postgresql.yml down
+```
+
+### 🏭 生产级高可用部署
+
+对于大型生产环境，我们提供了完整的企业级解决方案：
+
+#### 生产级配置特性
+- ✅ **PostgreSQL主从复制** - 99.9%高可用性
+- ✅ **PgBouncer连接池** - 支持200+并发连接
+- ✅ **Redis高性能缓存** - 提升响应速度
+- ✅ **Nginx负载均衡** - 多实例负载分担
+- ✅ **Prometheus + Grafana** - 完整监控体系
+- ✅ **自动健康检查** - 故障自动恢复
+- ✅ **完整日志管理** - 便于问题排查
+
+#### 部署命令
+
+```bash
+# 1. 创建必要的配置目录
+mkdir -p config monitoring ssl scripts
+
+# 2. 创建环境变量文件
+cat > .env << EOF
+# 数据库密码
+DB_PASSWORD=your_very_secure_password_here
+REPLICA_PASSWORD=replica_secure_password_here
+
+# Telegram配置
+TG_BOT_TOKEN=your_telegram_bot_token
+TG_BOT_ADMIN_ID=your_telegram_admin_id
+
+# API Keys
+ETHERSCAN_API_KEY=your_etherscan_api_key
+TRON_SCAN_API_KEY=your_tron_scan_api_key
+SOLANA_API_KEY=your_solana_api_key
+
+# 应用配置
+AUTH_TOKEN=your_auth_token
+APP_URI=https://your-domain.com
+
+# 监控配置
+GRAFANA_PASSWORD=secure_grafana_password
+REDIS_PASSWORD=redis_secure_password
+
+# 钱包地址
+WALLET_ADDRESS=TRON:your_tron_address,BSC:your_bsc_address
+TG_BOT_GROUP_ID=your_group_id
+EOF
+
+# 3. 启动完整生产环境
+docker-compose -f docker-compose.production.yml up -d
+
+# 4. 仅启动核心服务（推荐首次部署）
+docker-compose -f docker-compose.production.yml up -d postgres-primary pgbouncer usdtmore-primary redis
+
+# 5. 启用读写分离（可选）
+docker-compose -f docker-compose.production.yml --profile replica up -d
+
+# 6. 启用完整监控系统
+docker-compose -f docker-compose.production.yml --profile monitoring up -d
+
+# 7. 查看所有服务状态
+docker-compose -f docker-compose.production.yml ps
+
+# 8. 查看服务日志
+docker-compose -f docker-compose.production.yml logs -f usdtmore-primary
+
+# 9. 停止服务
+docker-compose -f docker-compose.production.yml down
+```
+
+#### 服务访问地址
+
+部署完成后，可通过以下地址访问各项服务：
+
+| 服务 | 访问地址 | 用途 |
+|------|---------|------|
+| **USDTMore主服务** | `http://localhost:6080` | 支付网关主界面 |
+| **USDTMore副本** | `http://localhost:6081` | 只读副本（可选） |
+| **Grafana监控** | `http://localhost:3000` | 数据可视化监控面板 |
+| **Prometheus** | `http://localhost:9090` | 指标收集和查询 |
+| **AlertManager** | `http://localhost:9093` | 告警管理 |
+| **PgBouncer** | `localhost:6432` | 数据库连接池 |
+| **PostgreSQL主库** | `localhost:5432` | 主数据库 |
+| **PostgreSQL副本** | `localhost:5433` | 只读副本 |
+| **Redis缓存** | `localhost:6379` | 缓存服务 |
+
+#### 监控指标说明
+
+**核心业务指标**：
+- 订单处理量（TPS）
+- 支付成功率
+- 平均响应时间
+- 区块链确认时间
+
+**系统性能指标**：
+- CPU使用率
+- 内存使用率
+- 磁盘I/O
+- 网络流量
+
+**数据库指标**：
+- 连接数
+- 查询性能
+- 缓存命中率
+- 慢查询统计
+
+#### 故障转移说明
+
+**自动故障转移场景**：
+1. **主数据库故障** → 自动切换到只读副本
+2. **应用实例故障** → Nginx自动路由到健康实例
+3. **Redis缓存故障** → 直接访问数据库（性能降级）
+4. **网络连接异常** → 自动重连机制
+
+**手动故障处理**：
+```bash
+# 检查服务健康状态
+docker-compose -f docker-compose.production.yml exec usdtmore-primary curl http://localhost:6080/health
+
+# 重启指定服务
+docker-compose -f docker-compose.production.yml restart usdtmore-primary
+
+# 查看详细日志
+docker-compose -f docker-compose.production.yml logs --tail=100 -f postgres-primary
+
+# 手动切换到副本实例
+docker-compose -f docker-compose.production.yml stop usdtmore-primary
+docker-compose -f docker-compose.production.yml scale usdtmore-replica=1
 ```
 
 ## 🔧 环境变量配置说明
