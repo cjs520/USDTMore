@@ -637,3 +637,50 @@ func IsRequestLogEnabled() bool {
 	}
 	return false
 }
+
+/*
+验证安全配置
+*/
+func ValidateSecurityConfig() []string {
+	var warnings []string
+
+	// 检查AUTH_TOKEN强度
+	authToken := GetAuthToken()
+	if authToken == "" || authToken == "123234" {
+		warnings = append(warnings, "AUTH_TOKEN未设置或使用默认值，存在安全风险")
+	} else if len(authToken) < 16 {
+		warnings = append(warnings, "AUTH_TOKEN长度过短，建议至少16位")
+	}
+
+	// 检查是否在生产环境使用HTTP
+	if help.GetEnv("ENVIRONMENT") == "production" {
+		if help.GetEnv("FORCE_HTTPS") != "true" {
+			warnings = append(warnings, "生产环境建议启用FORCE_HTTPS=true")
+		}
+	}
+
+	// 检查API密钥配置
+	apiKeys := map[string]string{
+		"TRON_SCAN_API_KEY":      GetTronScanApiKey(),
+		"TRON_GRID_API_KEY":      GetTronGridApiKey(),
+		"ETHERSCAN_API_KEY":      GetEtherscanApiKey(),
+		"POLYGON_SCAN_API_KEY":   GetPolygonScanApiKey(),
+		"OPTIMISM_EXPLORER_API_KEY": GetOptimismExplorerApiKey(),
+		"BSC_SCAN_API_KEY":       GetBscExplorerApiKey(),
+		"ARBITRUM_SCAN_API_KEY":  GetArbitrumScanApiKey(),
+		"XLAYER_SCAN_API_KEY":    GetXLayerApiKey(),
+	}
+
+	missingKeys := []string{}
+	for key, value := range apiKeys {
+		if value == "" {
+			missingKeys = append(missingKeys, key)
+		}
+	}
+
+	if len(missingKeys) > 0 {
+		warnings = append(warnings, fmt.Sprintf("以下API密钥未配置: %s", strings.Join(missingKeys, ", ")))
+	}
+
+	return warnings
+}

@@ -12,6 +12,13 @@ import (
 )
 
 func OrderNotify(order model.TradeOrders) {
+	// 验证回调URL安全性
+	if !help.IsValidCallbackURL(order.NotifyUrl) {
+		log.Error("订单回调URL不安全，拒绝发送：", order.OrderId, "URL:", order.NotifyUrl)
+		order.OrderSetNotifyState(model.OrderNotifyStateFail)
+		return
+	}
+
 	var data = make(map[string]interface{})
 	var body = struct {
 		TradeId            string  `json:"trade_id"`             //  本地订单号
@@ -61,10 +68,16 @@ func OrderNotify(order model.TradeOrders) {
 		"User-Agent":   "USDTMore/1.0",
 	}
 
+	// 记录安全日志（过滤敏感信息）
+	if config.IsRequestLogEnabled() {
+		filteredData := help.FilterSensitiveData(data)
+		log.Info(fmt.Sprintf("发送订单回调: order_id=%s, url=%s, data=%+v", order.OrderId, order.NotifyUrl, filteredData))
+	}
+
 	// 使用统一的HTTP客户端发送POST请求，包含重试机制
 	resp, err := httpClient.DefaultClient.Post(order.NotifyUrl, strings.NewReader(string(jsonBody)), headers, config.GetMaxRetries())
 	if err != nil {
-		log.Error("订单回调请求失败：", err)
+		log.Error("订单回调请求失败：", err, "order_id:", order.OrderId)
 		order.OrderSetNotifyState(model.OrderNotifyStateFail)
 		return
 	}

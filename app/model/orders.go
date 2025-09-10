@@ -3,6 +3,7 @@ package model
 import (
 	"fmt"
 	"github.com/shopspring/decimal"
+	"gorm.io/gorm"
 	"strconv"
 	"sync"
 	"time"
@@ -41,40 +42,94 @@ type TradeOrders struct {
 }
 
 /*
-设置成过期
+设置成过期 - 使用条件更新防止覆盖已支付订单
 */
 func (o *TradeOrders) OrderSetExpired() error {
-	o.Status = OrderStatusExpired
-	return DB.Save(o).Error
-}
+	// 只有等待支付的订单才能被设置为过期
+	result := DB.Model(o).Where("id = ? AND status = ?", o.Id, OrderStatusWaiting).Updates(map[string]interface{}{
+		"status":     OrderStatusExpired,
+		"updated_at": time.Now(),
+	})
 
-/*
-设置成工程
-*/
-func (o *TradeOrders) OrderSetSucc(fromAddress, tradeHash string, confirmedAt time.Time) error {
-	// 检查订单状态，防止重复更新
-	if o.Status != OrderStatusWaiting {
-		return fmt.Errorf("订单状态不正确，当前状态: %d", o.Status)
+	if result.Error != nil {
+		return fmt.Errorf("设置订单过期失败: %w", result.Error)
 	}
 
-	// 订单标记交易成功
-	o.Status = OrderStatusSuccess
-	o.FromAddress = fromAddress
-	o.ConfirmedAt = confirmedAt
-	o.TradeHash = tradeHash
-	r := DB.Save(o)
+	// 如果没有更新任何记录，说明订单状态已经改变
+	if result.RowsAffected == 0 {
+		return fmt.Errorf("订单状态已改变，无法设置为过期")
+	}
 
-	return r.Error
+	// 更新当前对象状态
+	o.Status = OrderStatusExpired
+	return nil
 }
 
 /*
-设置通知
+设置成功状态 - 使用数据库事务确保原子性
+*/
+func (o *TradeOrders) OrderSetSucc(fromAddress, tradeHash string, confirmedAt time.Time) error {
+	// 使用数据库事务确保原子性
+	return DB.Transaction(func(tx *gorm.DB) error {
+		// 重新查询订单状态，防止并发修改
+		var currentOrder TradeOrders
+		if err := tx.Where("id = ?", o.Id).First(&currentOrder).Error; err != nil {
+			return fmt.Errorf("查询订单失败: %w", err)
+		}
+
+		// 检查订单状态，防止重复更新
+		if currentOrder.Status != OrderStatusWaiting {
+			return fmt.Errorf("订单状态不正确，当前状态: %d，期望状态: %d", currentOrder.Status, OrderStatusWaiting)
+		}
+
+		// 更新订单状态
+		updates := map[string]interface{}{
+			"status":       OrderStatusSuccess,
+			"from_address": fromAddress,
+			"confirmed_at": confirmedAt,
+			"trade_hash":   tradeHash,
+			"updated_at":   time.Now(),
+		}
+
+		if err := tx.Model(&currentOrder).Where("id = ? AND status = ?", o.Id, OrderStatusWaiting).Updates(updates).Error; err != nil {
+			return fmt.Errorf("更新订单状态失败: %w", err)
+		}
+
+		// 检查是否真的更新了记录
+		if tx.RowsAffected == 0 {
+			return fmt.Errorf("订单状态更新失败，可能已被其他进程修改")
+		}
+
+		// 更新当前对象的状态
+		o.Status = OrderStatusSuccess
+		o.FromAddress = fromAddress
+		o.ConfirmedAt = confirmedAt
+		o.TradeHash = tradeHash
+
+		return nil
+	})
+}
+
+/*
+设置通知状态 - 使用原子更新
 */
 func (o *TradeOrders) OrderSetNotifyState(state int) error {
+	// 使用原子更新，避免并发问题
+	result := DB.Model(o).Where("id = ?", o.Id).Updates(map[string]interface{}{
+		"notify_num":   gorm.Expr("notify_num + 1"),
+		"notify_state": state,
+		"updated_at":   time.Now(),
+	})
+
+	if result.Error != nil {
+		return fmt.Errorf("更新通知状态失败: %w", result.Error)
+	}
+
+	// 更新当前对象的状态
 	o.NotifyNum += 1
 	o.NotifyState = state
 
-	return DB.Save(o).Error
+	return nil
 }
 
 /*
