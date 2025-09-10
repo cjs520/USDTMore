@@ -1,6 +1,7 @@
 package model
 
 import (
+	"fmt"
 	"github.com/shopspring/decimal"
 	"strconv"
 	"sync"
@@ -51,6 +52,11 @@ func (o *TradeOrders) OrderSetExpired() error {
 设置成工程
 */
 func (o *TradeOrders) OrderSetSucc(fromAddress, tradeHash string, confirmedAt time.Time) error {
+	// 检查订单状态，防止重复更新
+	if o.Status != OrderStatusWaiting {
+		return fmt.Errorf("订单状态不正确，当前状态: %d", o.Status)
+	}
+
 	// 订单标记交易成功
 	o.Status = OrderStatusSuccess
 	o.FromAddress = fromAddress
@@ -122,20 +128,34 @@ func CalcTradeAmount(wa []WalletAddress, rate, money float64) (WalletAddress, st
 	_calcMutex.Lock()
 	defer _calcMutex.Unlock()
 
+	// 检查钱包地址是否为空
+	if len(wa) == 0 {
+		return WalletAddress{}, ""
+	}
+
 	var _orders []TradeOrders
 	var _lock = make(map[string]bool)
 	DB.Where("status = ?", OrderStatusWaiting).Find(&_orders)
 	for _, _order := range _orders {
 		// 标准化订单金额格式，确保与其他地方的Key一致
-		amount, _ := decimal.NewFromString(_order.Amount)
+		amount, err := decimal.NewFromString(_order.Amount)
+		if err != nil {
+			continue // 跳过无效的金额
+		}
 		standardAmount := amount.StringFixed(2)
 		_lock[_order.Chain+_order.Address+standardAmount] = true
 	}
 
 	var _atom = decimal.NewFromFloat(Atomicity)
 	var payAmount = strconv.FormatFloat(money/rate, 'f', 2, 64)
-	var _payAmount, _ = decimal.NewFromString(payAmount)
-	for {
+	var _payAmount, err = decimal.NewFromString(payAmount)
+	if err != nil {
+		return WalletAddress{}, ""
+	}
+
+	// 设置最大尝试次数，防止无限循环
+	const maxAttempts = 10000
+	for attempt := 0; attempt < maxAttempts; attempt++ {
 		for _, address := range wa {
 			// 使用标准化的金额格式进行Key匹配
 			standardPayAmount := _payAmount.StringFixed(2)
@@ -150,4 +170,7 @@ func CalcTradeAmount(wa []WalletAddress, rate, money float64) (WalletAddress, st
 		// 已经被占用，每次递增一个原子精度
 		_payAmount = _payAmount.Add(_atom)
 	}
+
+	// 如果达到最大尝试次数，返回空值
+	return WalletAddress{}, ""
 }

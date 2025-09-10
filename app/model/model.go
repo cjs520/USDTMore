@@ -12,7 +12,7 @@ var _err error
 
 func Init() error {
 	dbType := config.GetDBType()
-	
+
 	switch dbType {
 	case "postgres", "postgresql":
 		// Build PostgreSQL connection DSN
@@ -24,7 +24,7 @@ func Init() error {
 			config.GetDBPort(),
 			config.GetDBSSLMode(),
 			config.GetDBTimezone())
-		
+
 		DB, _err = gorm.Open(postgres.Open(dsn), &gorm.Config{})
 		if _err != nil {
 			return fmt.Errorf("failed to connect to PostgreSQL: %w", _err)

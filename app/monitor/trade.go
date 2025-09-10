@@ -3,6 +3,7 @@ package monitor
 import (
 	"USDTMore/app/config"
 	"USDTMore/app/help"
+	httpClient "USDTMore/app/http"
 	"USDTMore/app/log"
 	"USDTMore/app/model"
 	"USDTMore/app/notify"
@@ -11,9 +12,7 @@ import (
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 	"github.com/shopspring/decimal"
 	"github.com/tidwall/gjson"
-	"io"
 	"math/big"
-	"net/http"
 	"net/url"
 	"strconv"
 	"strings"
@@ -291,29 +290,29 @@ func handlePaymentTransactionForETH(_lock map[string]model.TradeOrders, _toChain
 
 		tokenSymbol := transfer.Get("tokenSymbol").String()
 		contractAddress := transfer.Get("contractAddress").String()
-		
+
 		// 根据链类型验证USDT合约地址和token symbol
 		var isValidUSDT bool
 		switch _toChain {
 		case "POLY":
-			isValidUSDT = strings.EqualFold(contractAddress, config.GetPolygonScanContractAddress()) || 
-						  strings.Contains(strings.ToUpper(tokenSymbol), "USDT")
+			isValidUSDT = strings.EqualFold(contractAddress, config.GetPolygonScanContractAddress()) ||
+				strings.Contains(strings.ToUpper(tokenSymbol), "USDT")
 		case "OP":
-			isValidUSDT = strings.EqualFold(contractAddress, config.GetOptimismExplorerContractAddress()) || 
-						  strings.Contains(strings.ToUpper(tokenSymbol), "USDT")
+			isValidUSDT = strings.EqualFold(contractAddress, config.GetOptimismExplorerContractAddress()) ||
+				strings.Contains(strings.ToUpper(tokenSymbol), "USDT")
 		case "BSC":
-			isValidUSDT = strings.EqualFold(contractAddress, config.GetBscExplorerContractAddress()) || 
-						  strings.Contains(strings.ToUpper(tokenSymbol), "USDT") || tokenSymbol == "BSC-USD"
+			isValidUSDT = strings.EqualFold(contractAddress, config.GetBscExplorerContractAddress()) ||
+				strings.Contains(strings.ToUpper(tokenSymbol), "USDT") || tokenSymbol == "BSC-USD"
 		case "ARB":
-			isValidUSDT = strings.EqualFold(contractAddress, config.GetArbitrumContractAddress()) || 
-						  strings.Contains(strings.ToUpper(tokenSymbol), "USDT")
+			isValidUSDT = strings.EqualFold(contractAddress, config.GetArbitrumContractAddress()) ||
+				strings.Contains(strings.ToUpper(tokenSymbol), "USDT")
 		case "XLAYER":
-			isValidUSDT = strings.EqualFold(contractAddress, config.GetXLayerContractAddress()) || 
-						  strings.Contains(strings.ToUpper(tokenSymbol), "USDT")
+			isValidUSDT = strings.EqualFold(contractAddress, config.GetXLayerContractAddress()) ||
+				strings.Contains(strings.ToUpper(tokenSymbol), "USDT")
 		default:
 			isValidUSDT = strings.Contains(strings.ToUpper(tokenSymbol), "USDT")
 		}
-		
+
 		if !isValidUSDT {
 			continue
 		}
@@ -336,15 +335,15 @@ func handlePaymentTransactionForETH(_lock map[string]model.TradeOrders, _toChain
 
 		// 使用标准化的金额格式进行订单匹配
 		amountStr := decimalUSDT.StringFixed(2) // 统一使用2位小数格式
-		orderKey := _toChain+_toAddress+amountStr
+		orderKey := _toChain + _toAddress + amountStr
 		_order, ok := _lock[orderKey]
 		if !ok {
 			// 尝试使用原始字符串格式匹配
-			orderKeyAlt := _toChain+_toAddress+decimalUSDT.String()
+			orderKeyAlt := _toChain + _toAddress + decimalUSDT.String()
 			_order, ok = _lock[orderKeyAlt]
 			if !ok {
 				// 订单不存在，记录调试信息
-				log.Info(fmt.Sprintf("[%s] 未找到匹配订单: key1=%s, key2=%s, amount=%s, txid=%s", 
+				log.Info(fmt.Sprintf("[%s] 未找到匹配订单: key1=%s, key2=%s, amount=%s, txid=%s",
 					_toChain, orderKey, orderKeyAlt, decimalUSDT.String(), transfer.Get("hash").String()))
 				continue
 			}
@@ -354,9 +353,9 @@ func handlePaymentTransactionForETH(_lock map[string]model.TradeOrders, _toChain
 		var _createdAt = time.Unix(transfer.Get("timeStamp").Int(), 0)
 		if _createdAt.Unix() < _order.CreatedAt.Unix() || _createdAt.Unix() > _order.ExpiredAt.Unix() {
 			// 失效交易，记录调试信息
-			log.Info(fmt.Sprintf("[%s] 交易时间无效: txid=%s, 交易时间=%s, 订单创建时间=%s, 订单过期时间=%s", 
-				_toChain, transfer.Get("hash").String(), 
-				_createdAt.Format(time.DateTime), 
+			log.Info(fmt.Sprintf("[%s] 交易时间无效: txid=%s, 交易时间=%s, 订单创建时间=%s, 订单过期时间=%s",
+				_toChain, transfer.Get("hash").String(),
+				_createdAt.Format(time.DateTime),
 				_order.CreatedAt.Format(time.DateTime),
 				_order.ExpiredAt.Format(time.DateTime)))
 			continue
@@ -364,10 +363,10 @@ func handlePaymentTransactionForETH(_lock map[string]model.TradeOrders, _toChain
 
 		var _transId = transfer.Get("hash").String()
 		var _fromAddress = transfer.Get("from").String()
-		
-		log.Info(fmt.Sprintf("[%s] 处理订单支付: txid=%s, from=%s, to=%s, amount=%s", 
+
+		log.Info(fmt.Sprintf("[%s] 处理订单支付: txid=%s, from=%s, to=%s, amount=%s",
 			_toChain, _transId, _fromAddress, _toAddress, decimalUSDT.String()))
-		
+
 		if _order.OrderSetSucc(_fromAddress, _transId, _createdAt) == nil {
 			// 通知订单支付成功
 			log.Info(fmt.Sprintf("[%s] 订单支付成功，发送回调: order_id=%s, txid=%s", _toChain, _order.TradeId, _transId))
@@ -375,7 +374,7 @@ func handlePaymentTransactionForETH(_lock map[string]model.TradeOrders, _toChain
 			// TG发送订单信息
 			go telegram.SendTradeSuccMsg(_order)
 		} else {
-			log.Error("["+_toChain+"] 订单设置成功状态失败: order_id="+_order.TradeId+", txid="+_transId)
+			log.Error("[" + _toChain + "] 订单设置成功状态失败: order_id=" + _order.TradeId + ", txid=" + _transId)
 		}
 	}
 }
@@ -513,29 +512,29 @@ func handleOtherNotifyForETH(_toChain string, _toAddress string, result gjson.Re
 
 		tokenSymbol := transfer.Get("tokenSymbol").String()
 		contractAddress := transfer.Get("contractAddress").String()
-		
+
 		// 根据链类型验证USDT合约地址和token symbol
 		var isValidUSDT bool
 		switch _toChain {
 		case "POLY":
-			isValidUSDT = strings.EqualFold(contractAddress, config.GetPolygonScanContractAddress()) || 
-						  strings.Contains(strings.ToUpper(tokenSymbol), "USDT")
+			isValidUSDT = strings.EqualFold(contractAddress, config.GetPolygonScanContractAddress()) ||
+				strings.Contains(strings.ToUpper(tokenSymbol), "USDT")
 		case "OP":
-			isValidUSDT = strings.EqualFold(contractAddress, config.GetOptimismExplorerContractAddress()) || 
-						  strings.Contains(strings.ToUpper(tokenSymbol), "USDT")
+			isValidUSDT = strings.EqualFold(contractAddress, config.GetOptimismExplorerContractAddress()) ||
+				strings.Contains(strings.ToUpper(tokenSymbol), "USDT")
 		case "BSC":
-			isValidUSDT = strings.EqualFold(contractAddress, config.GetBscExplorerContractAddress()) || 
-						  strings.Contains(strings.ToUpper(tokenSymbol), "USDT") || tokenSymbol == "BSC-USD"
+			isValidUSDT = strings.EqualFold(contractAddress, config.GetBscExplorerContractAddress()) ||
+				strings.Contains(strings.ToUpper(tokenSymbol), "USDT") || tokenSymbol == "BSC-USD"
 		case "ARB":
-			isValidUSDT = strings.EqualFold(contractAddress, config.GetArbitrumContractAddress()) || 
-						  strings.Contains(strings.ToUpper(tokenSymbol), "USDT")
+			isValidUSDT = strings.EqualFold(contractAddress, config.GetArbitrumContractAddress()) ||
+				strings.Contains(strings.ToUpper(tokenSymbol), "USDT")
 		case "XLAYER":
-			isValidUSDT = strings.EqualFold(contractAddress, config.GetXLayerContractAddress()) || 
-						  strings.Contains(strings.ToUpper(tokenSymbol), "USDT")
+			isValidUSDT = strings.EqualFold(contractAddress, config.GetXLayerContractAddress()) ||
+				strings.Contains(strings.ToUpper(tokenSymbol), "USDT")
 		default:
 			isValidUSDT = strings.Contains(strings.ToUpper(tokenSymbol), "USDT")
 		}
-		
+
 		if !isValidUSDT {
 			continue
 		}
@@ -635,13 +634,9 @@ func handleOtherNotifyForXLayerScan(_toAddress string, result gjson.Result) {
 // 搜索交易记录 TronScan
 func getUsdtTrc20TransByTronScan(_toAddress string) (gjson.Result, error) {
 	var now = time.Now()
-	var client = &http.Client{Timeout: time.Second * 15}
-	req, err := http.NewRequest("GET", "https://apilist.tronscanapi.com/api/new/token_trc20/transfers", nil)
-	if err != nil {
-		return gjson.Result{}, fmt.Errorf("处理请求创建错误: %w", err)
-	}
 
-	// 构建请求参数
+	// 构建请求URL
+	baseURL := "https://apilist.tronscanapi.com/api/new/token_trc20/transfers"
 	var params = url.Values{}
 	params.Add("start", "0")
 	params.Add("limit", "30")
@@ -654,53 +649,54 @@ func getUsdtTrc20TransByTronScan(_toAddress string) (gjson.Result, error) {
 	} else {
 		params.Add("confirm", "false")
 	}
-	req.URL.RawQuery = params.Encode()
+
+	requestURL := baseURL + "?" + params.Encode()
 
 	// 根据TRONSCAN 2025年8月公告，API Key现在是强制要求的
 	apiKey := config.GetTronScanApiKey()
 	if apiKey == "" {
 		return gjson.Result{}, fmt.Errorf("TRON_SCAN_API_KEY是必需的，请设置环境变量")
 	}
-	req.Header.Add("TRON-PRO-API-KEY", apiKey)
 
-	// 请求交易记录
-	resp, err := client.Do(req)
+	// 设置请求头
+	headers := map[string]string{
+		"TRON-PRO-API-KEY": apiKey,
+		"User-Agent":       "USDTMore/1.0",
+	}
+
+	// 使用统一的HTTP客户端发送请求，包含重试机制
+	resp, err := httpClient.DefaultClient.Get(requestURL, headers, config.GetMaxRetries())
 	if err != nil {
-		return gjson.Result{}, fmt.Errorf("请求交易记录错误: %w", err)
+		return gjson.Result{}, fmt.Errorf("TronScan API请求失败: %w", err)
 	}
 
-	if resp.StatusCode != http.StatusOK {
-		return gjson.Result{}, fmt.Errorf("请求交易记录错误: StatusCode != 200")
-	}
-
-	// 获取响应记录
-	all, err := io.ReadAll(resp.Body)
+	// 获取响应内容
+	body, err := httpClient.GetResponseBody(resp)
 	if err != nil {
-		return gjson.Result{}, fmt.Errorf("读取交易记录错误: %w", err)
+		return gjson.Result{}, fmt.Errorf("读取TronScan响应失败: %w", err)
 	}
-
-	// 释放响应请求
-	_ = resp.Body.Close()
 
 	// 解析响应记录
-	return gjson.ParseBytes(all), nil
+	result := gjson.ParseBytes(body)
+
+	// 检查API响应是否包含错误
+	if result.Get("success").Exists() && !result.Get("success").Bool() {
+		return gjson.Result{}, fmt.Errorf("TronScan API错误: %s", result.Get("error").String())
+	}
+
+	return result, nil
 }
 
 // 搜索交易记录 TronGrid
 func getUsdtTrc20TransByTronGrid(_toAddress string) (gjson.Result, error) {
 	var now = time.Now()
-	var client = &http.Client{Timeout: time.Second * 15}
-	req, err := http.NewRequest("GET", fmt.Sprintf("https://api.trongrid.io/v1/accounts/%s/transactions/trc20", _toAddress), nil)
-	if err != nil {
 
-		return gjson.Result{}, fmt.Errorf("处理请求创建错误: %w", err)
-	}
-
-	// 构建请求参数
+	// 构建请求URL
+	baseURL := fmt.Sprintf("https://api.trongrid.io/v1/accounts/%s/transactions/trc20", _toAddress)
 	var params = url.Values{}
 	params.Add("limit", "30")
 	params.Add("contract_address", usdtToken)
-	params.Add("min_timestamp", strconv.FormatInt(now.Add(-time.Hour).UnixMilli(), 10)) // 当前时间向前推 3 小时
+	params.Add("min_timestamp", strconv.FormatInt(now.Add(-time.Hour).UnixMilli(), 10)) // 当前时间向前推 1 小时
 	params.Add("max_timestamp", strconv.FormatInt(now.Add(time.Hour).UnixMilli(), 10))  // 当前时间向后推 1 小时
 	params.Add("order_by", "block_timestamp,desc")
 	if config.GetTradeConfirmed() {
@@ -708,68 +704,70 @@ func getUsdtTrc20TransByTronGrid(_toAddress string) (gjson.Result, error) {
 	} else {
 		params.Add("only_confirmed", "false")
 	}
+
+	requestURL := baseURL + "?" + params.Encode()
+
 	// 根据TRONSCAN 2025年8月公告，TronGrid API Key也是强制要求的
 	gridApiKey := config.GetTronGridApiKey()
 	if gridApiKey == "" {
 		return gjson.Result{}, fmt.Errorf("TRON_GRID_API_KEY是必需的，请设置环境变量")
 	}
-	req.Header.Add("TRON-PRO-API-KEY", gridApiKey)
 
-	req.URL.RawQuery = params.Encode()
+	// 设置请求头
+	headers := map[string]string{
+		"TRON-PRO-API-KEY": gridApiKey,
+		"User-Agent":       "USDTMore/1.0",
+	}
 
-	// 请求交易记录
-	resp, err := client.Do(req)
-
+	// 使用统一的HTTP客户端发送请求，包含重试机制
+	resp, err := httpClient.DefaultClient.Get(requestURL, headers, config.GetMaxRetries())
 	if err != nil {
-
-		return gjson.Result{}, fmt.Errorf("请求交易记录错误: %w", err)
+		return gjson.Result{}, fmt.Errorf("TronGrid API请求失败: %w", err)
 	}
 
-	if resp.StatusCode != http.StatusOK {
-
-		return gjson.Result{}, fmt.Errorf("请求交易记录错误: StatusCode != 200")
-	}
-
-	// 获取响应记录
-	all, err := io.ReadAll(resp.Body)
+	// 获取响应内容
+	body, err := httpClient.GetResponseBody(resp)
 	if err != nil {
-
-		return gjson.Result{}, fmt.Errorf("读取交易记录错误: %w", err)
+		return gjson.Result{}, fmt.Errorf("读取TronGrid响应失败: %w", err)
 	}
-
-	// 释放响应请求
-	_ = resp.Body.Close()
 
 	// 解析响应记录
-	return gjson.ParseBytes(all), nil
+	result := gjson.ParseBytes(body)
+
+	// 检查API响应是否包含错误
+	if result.Get("success").Exists() && !result.Get("success").Bool() {
+		return gjson.Result{}, fmt.Errorf("TronGrid API错误: %s", result.Get("Error").String())
+	}
+
+	return result, nil
 }
 
 /*
 请求ETH兼容的链
 */
 func requestAddress(baseUrl string, query string) []byte {
-	var url = baseUrl + "?" + query
-	var client = http.Client{Timeout: time.Second * 5}
-	resp, err := client.Get(url)
+	requestURL := baseUrl + "?" + query
+
+	// 设置请求头
+	headers := map[string]string{
+		"User-Agent": "USDTMore/1.0",
+	}
+
+	// 使用统一的HTTP客户端发送请求，包含重试机制
+	resp, err := httpClient.DefaultClient.Get(requestURL, headers, config.GetMaxRetries())
 	if err != nil {
-		log.Error("GetWalletInfoByAddress client.Get(url)", err)
+		log.Error("ETH兼容链API请求失败:", err)
 		return nil
 	}
 
-	defer resp.Body.Close()
-	if resp.StatusCode != 200 {
-		log.Error("GetWalletInfoByAddress resp.StatusCode != 200", resp.StatusCode, err)
-		return nil
-	}
-
-	all, err := io.ReadAll(resp.Body)
+	// 获取响应内容
+	body, err := httpClient.GetResponseBody(resp)
 	if err != nil {
-		log.Error("GetWalletInfoByAddress io.ReadAll(resp.Body)", err)
+		log.Error("读取ETH兼容链响应失败:", err)
 		return nil
 	}
-	//result := gjson.ParseBytes(all)
 
-	return all
+	return body
 }
 
 /*
@@ -788,40 +786,40 @@ func getUsdtTransByETH(chain string, address string) (gjson.Result, error) {
 	// 根据链类型设置API端点、chainid和相关配置，并强制验证API Key
 	switch chain {
 	case "POLY":
-		host = "https://api.etherscan.io/v2/api"  // Polygon使用Etherscan V2 API
-		chainId = "137" // Polygon chainid
+		host = "https://api.etherscan.io/v2/api" // Polygon使用Etherscan V2 API
+		chainId = "137"                          // Polygon chainid
 		apiKey = config.GetPolygonScanApiKey()
 		if apiKey == "" {
 			return gjson.Result{}, fmt.Errorf("POLYGON_SCAN_API_KEY是必需的，请设置环境变量")
 		}
 		contractAddress = config.GetPolygonScanContractAddress()
 	case "OP":
-		host = "https://api.etherscan.io/v2/api"  // Optimism使用Etherscan V2 API
-		chainId = "10" // Optimism chainid
+		host = "https://api.etherscan.io/v2/api" // Optimism使用Etherscan V2 API
+		chainId = "10"                           // Optimism chainid
 		apiKey = config.GetOptimismExplorerApiKey()
 		if apiKey == "" {
 			return gjson.Result{}, fmt.Errorf("OPTIMISM_EXPLORER_API_KEY是必需的，请设置环境变量")
 		}
 		contractAddress = config.GetOptimismExplorerContractAddress()
 	case "BSC":
-		host = "https://api.etherscan.io/v2/api"  // BSC使用Etherscan V2 Multichain API
-		chainId = "56" // BSC chainid
+		host = "https://api.etherscan.io/v2/api" // BSC使用Etherscan V2 Multichain API
+		chainId = "56"                           // BSC chainid
 		apiKey = config.GetBscExplorerApiKey()
 		if apiKey == "" {
 			return gjson.Result{}, fmt.Errorf("BSC_SCAN_API_KEY是必需的，请设置环境变量")
 		}
 		contractAddress = config.GetBscExplorerContractAddress()
 	case "ARB":
-		host = "https://api.etherscan.io/v2/api"  // Arbitrum使用Etherscan V2 API
-		chainId = "42161" // Arbitrum One chainid
+		host = "https://api.etherscan.io/v2/api" // Arbitrum使用Etherscan V2 API
+		chainId = "42161"                        // Arbitrum One chainid
 		apiKey = config.GetArbitrumScanApiKey()
 		if apiKey == "" {
 			return gjson.Result{}, fmt.Errorf("ARBITRUM_SCAN_API_KEY是必需的，请设置环境变量")
 		}
 		contractAddress = config.GetArbitrumContractAddress()
 	case "XLAYER":
-		host = "https://api.etherscan.io/v2/api"  // X-Layer使用Etherscan V2 API
-		chainId = "196" // X-Layer chainid
+		host = "https://api.etherscan.io/v2/api" // X-Layer使用Etherscan V2 API
+		chainId = "196"                          // X-Layer chainid
 		apiKey = config.GetXLayerApiKey()
 		if apiKey == "" {
 			return gjson.Result{}, fmt.Errorf("XLAYER_SCAN_API_KEY是必需的，请设置环境变量")
@@ -841,17 +839,17 @@ func getUsdtTransByETH(chain string, address string) (gjson.Result, error) {
 		if resultTx.Get("result").IsArray() && len(resultTx.Get("result").Array()) > 0 {
 			latestBlockNumber := int64(0)
 			threeHoursAgo := time.Now().Add(-3 * time.Hour)
-			
+
 			for _, tx := range resultTx.Get("result").Array() {
 				txTime := time.Unix(tx.Get("timeStamp").Int(), 0)
 				blockNumber := tx.Get("blockNumber").Int()
-				
+
 				// 只更新3小时前的区块，确保交易已确认
 				if txTime.Before(threeHoursAgo) && blockNumber > latestBlockNumber {
 					latestBlockNumber = blockNumber
 				}
 			}
-			
+
 			if latestBlockNumber > wa.StartBlock {
 				wa.StartBlock = latestBlockNumber
 				model.DB.Save(&wa)
@@ -882,69 +880,75 @@ func getUsdtXLayerTransByXLayerScan(_toAddress string) (gjson.Result, error) {
 
 // Solana链USDT交易查询
 func getUsdtSolanaTransBySolscan(_toAddress string) (gjson.Result, error) {
-	var client = &http.Client{Timeout: time.Second * 15}
-	
 	// 使用Solscan API查询SPL Token交易
-	apiUrl := fmt.Sprintf("https://public-api.solscan.io/account/splTransfers?account=%s&limit=50", _toAddress)
-	req, err := http.NewRequest("GET", apiUrl, nil)
-	if err != nil {
-		return gjson.Result{}, fmt.Errorf("创建Solana请求错误: %w", err)
+	requestURL := fmt.Sprintf("https://public-api.solscan.io/account/splTransfers?account=%s&limit=50", _toAddress)
+
+	// 设置请求头
+	headers := map[string]string{
+		"User-Agent": "USDTMore/1.0",
 	}
 
 	// 添加API Key（如果有）
 	apiKey := config.GetSolanaApiKey()
 	if apiKey != "" && apiKey != "YourSolanaApiKey" {
-		req.Header.Add("token", apiKey)
+		headers["token"] = apiKey
 	}
 
-	resp, err := client.Do(req)
+	// 使用统一的HTTP客户端发送请求，包含重试机制
+	resp, err := httpClient.DefaultClient.Get(requestURL, headers, config.GetMaxRetries())
 	if err != nil {
-		return gjson.Result{}, fmt.Errorf("请求Solana交易记录错误: %w", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return gjson.Result{}, fmt.Errorf("Solana API请求失败: StatusCode = %d", resp.StatusCode)
+		return gjson.Result{}, fmt.Errorf("Solana API请求失败: %w", err)
 	}
 
-	all, err := io.ReadAll(resp.Body)
+	// 获取响应内容
+	body, err := httpClient.GetResponseBody(resp)
 	if err != nil {
-		return gjson.Result{}, fmt.Errorf("读取Solana响应错误: %w", err)
+		return gjson.Result{}, fmt.Errorf("读取Solana响应失败: %w", err)
 	}
 
-	return gjson.ParseBytes(all), nil
+	// 解析响应记录
+	result := gjson.ParseBytes(body)
+
+	// 检查API响应是否包含错误
+	if result.Get("success").Exists() && !result.Get("success").Bool() {
+		return gjson.Result{}, fmt.Errorf("Solscan API错误: %s", result.Get("message").String())
+	}
+
+	return result, nil
 }
 
 // Aptos链USDT交易查询
 func getUsdtAptosTransByAptosLabs(_toAddress string) (gjson.Result, error) {
-	var client = &http.Client{Timeout: time.Second * 15}
-	
 	// 使用Aptos官方API查询代币交易
-	apiUrl := fmt.Sprintf("https://fullnode.mainnet.aptoslabs.com/v1/accounts/%s/transactions?limit=50", _toAddress)
-	req, err := http.NewRequest("GET", apiUrl, nil)
+	requestURL := fmt.Sprintf("https://fullnode.mainnet.aptoslabs.com/v1/accounts/%s/transactions?limit=50", _toAddress)
+
+	// 设置请求头
+	headers := map[string]string{
+		"Content-Type": "application/json",
+		"User-Agent":   "USDTMore/1.0",
+	}
+
+	// 使用统一的HTTP客户端发送请求，包含重试机制
+	resp, err := httpClient.DefaultClient.Get(requestURL, headers, config.GetMaxRetries())
 	if err != nil {
-		return gjson.Result{}, fmt.Errorf("创建Aptos请求错误: %w", err)
+		return gjson.Result{}, fmt.Errorf("Aptos API请求失败: %w", err)
 	}
 
-	// Aptos官方API是公开的，不需要API Key
-	req.Header.Set("Content-Type", "application/json")
-
-	resp, err := client.Do(req)
+	// 获取响应内容
+	body, err := httpClient.GetResponseBody(resp)
 	if err != nil {
-		return gjson.Result{}, fmt.Errorf("请求Aptos交易记录错误: %w", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return gjson.Result{}, fmt.Errorf("Aptos API请求失败: StatusCode = %d", resp.StatusCode)
+		return gjson.Result{}, fmt.Errorf("读取Aptos响应失败: %w", err)
 	}
 
-	all, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return gjson.Result{}, fmt.Errorf("读取Aptos响应错误: %w", err)
+	// 解析响应记录
+	result := gjson.ParseBytes(body)
+
+	// 检查API响应是否包含错误
+	if result.Get("error_code").Exists() {
+		return gjson.Result{}, fmt.Errorf("Aptos API错误: %s", result.Get("message").String())
 	}
 
-	return gjson.ParseBytes(all), nil
+	return result, nil
 }
 
 // Solana交易处理函数
@@ -968,11 +972,11 @@ func handlePaymentTransactionForSolana(_lock map[string]model.TradeOrders, _toAd
 
 		// 查找匹配的订单 - 使用双重格式匹配
 		amountStr := _rawQuant.StringFixed(2) // 标准化格式
-		orderKey := "SOL"+_toAddress+amountStr
+		orderKey := "SOL" + _toAddress + amountStr
 		_order, ok := _lock[orderKey]
 		if !ok {
 			// 尝试原始格式
-			orderKeyAlt := "SOL"+_toAddress+_rawQuant.String()
+			orderKeyAlt := "SOL" + _toAddress + _rawQuant.String()
 			_order, ok = _lock[orderKeyAlt]
 			if !ok {
 				log.Info(fmt.Sprintf("[SOL] 未找到匹配订单: key1=%s, key2=%s, amount=%s", orderKey, orderKeyAlt, _rawQuant.String()))
@@ -1081,11 +1085,11 @@ func handlePaymentTransactionForAptos(_lock map[string]model.TradeOrders, _toAdd
 
 			// 查找匹配订单 - 使用双重格式匹配
 			amountStr := _rawQuant.StringFixed(2) // 标准化格式
-			orderKey := "APT"+_toAddress+amountStr
+			orderKey := "APT" + _toAddress + amountStr
 			_order, ok := _lock[orderKey]
 			if !ok {
 				// 尝试原始格式
-				orderKeyAlt := "APT"+_toAddress+_rawQuant.String()
+				orderKeyAlt := "APT" + _toAddress + _rawQuant.String()
 				_order, ok = _lock[orderKeyAlt]
 				if !ok {
 					log.Info(fmt.Sprintf("[APT] 未找到匹配订单: key1=%s, key2=%s, amount=%s", orderKey, orderKeyAlt, _rawQuant.String()))

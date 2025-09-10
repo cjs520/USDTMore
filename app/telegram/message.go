@@ -54,7 +54,7 @@ func SendTradeSuccMsg(order model.TradeOrders) {
 	)
 	var msg = tgbotapi.NewMessage(chatId, text)
 	msg.ParseMode = tgbotapi.ModeMarkdown
-	
+
 	// 只有在TradeHash不为空且不等于TradeId时才添加交易链接
 	if order.TradeHash != "" && order.TradeHash != order.TradeId {
 		msg.ReplyMarkup = tgbotapi.InlineKeyboardMarkup{

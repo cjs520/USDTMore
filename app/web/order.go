@@ -43,6 +43,11 @@ func CreateTransaction(ctx *gin.Context) {
 
 	// 计算交易金额
 	address, _amount := model.CalcTradeAmount(wallet, rate, _money)
+	if _amount == "" || address.Address == "" {
+		log.Error("订单创建失败：无法计算可用的交易金额")
+		ctx.JSON(200, RespFailJson(fmt.Errorf("系统繁忙，请稍后重试")))
+		return
+	}
 
 	// 解析请求地址
 	var _host = "http://" + ctx.Request.Host

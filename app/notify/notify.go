@@ -3,14 +3,12 @@ package notify
 import (
 	"USDTMore/app/config"
 	"USDTMore/app/help"
+	httpClient "USDTMore/app/http"
 	"USDTMore/app/log"
 	"USDTMore/app/model"
 	"encoding/json"
 	"fmt"
-	"io"
-	"net/http"
 	"strings"
-	"time"
 )
 
 func OrderNotify(order model.TradeOrders) {
@@ -51,40 +49,39 @@ func OrderNotify(order model.TradeOrders) {
 
 	// 再次序列化
 	jsonBody, err = json.Marshal(body)
-	var client = http.Client{Timeout: time.Second * 5}
-	var postReq, err2 = http.NewRequest("POST", order.NotifyUrl, strings.NewReader(string(jsonBody)))
-	if err2 != nil {
-		log.Error("Notify NewRequest Error：", err)
-
-		return
-	}
-
-	postReq.Header.Set("Content-Type", "application/json")
-	postReq.Header.Set("Powered-By", "https://ovsea.net")
-	resp, err := client.Do(postReq)
 	if err != nil {
-		log.Error("Notify Do Error：", err)
-
+		log.Error("Notify JSON序列化失败：", err)
 		return
 	}
 
-	defer resp.Body.Close()
-	if resp.StatusCode != 200 {
-		log.Warn(fmt.Sprintf("订单回调失败(%v)：resp.StatusCode != 200", order.OrderId), order.OrderSetNotifyState(model.OrderNotifyStateFail))
-
-		return
+	// 设置请求头
+	headers := map[string]string{
+		"Content-Type": "application/json",
+		"Powered-By":   "https://ovsea.net",
+		"User-Agent":   "USDTMore/1.0",
 	}
 
-	all, err := io.ReadAll(resp.Body)
+	// 使用统一的HTTP客户端发送POST请求，包含重试机制
+	resp, err := httpClient.DefaultClient.Post(order.NotifyUrl, strings.NewReader(string(jsonBody)), headers, config.GetMaxRetries())
 	if err != nil {
-		log.Warn(fmt.Sprintf("订单回调失败(%v)：io.ReadAll(resp.Body) Error:", order.OrderId), err, order.OrderSetNotifyState(model.OrderNotifyStateFail))
-
+		log.Error("订单回调请求失败：", err)
+		order.OrderSetNotifyState(model.OrderNotifyStateFail)
 		return
 	}
 
-	if string(all) != "ok" {
-		log.Warn(fmt.Sprintf("订单回调失败(%v)：body != ok (%s)", order.OrderId, string(all)), err, order.OrderSetNotifyState(model.OrderNotifyStateFail))
+	// 获取响应内容
+	responseBody, err := httpClient.GetResponseBody(resp)
+	if err != nil {
+		log.Warn(fmt.Sprintf("订单回调失败(%v)：读取响应失败", order.OrderId), err)
+		order.OrderSetNotifyState(model.OrderNotifyStateFail)
+		return
+	}
 
+	// 检查响应内容
+	responseBodyStr := string(responseBody)
+	if responseBodyStr != "ok" {
+		log.Warn(fmt.Sprintf("订单回调失败(%v)：响应内容不正确 (%s)", order.OrderId, responseBodyStr))
+		order.OrderSetNotifyState(model.OrderNotifyStateFail)
 		return
 	}
 

@@ -2,6 +2,7 @@ package telegram
 
 import (
 	"USDTMore/app/config"
+	"USDTMore/app/log"
 	"fmt"
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 	"strconv"
@@ -43,29 +44,64 @@ func GetBotApi() *tgbotapi.BotAPI {
 }
 
 func SendMsg(msg tgbotapi.MessageConfig) {
-	if msg.ChatID != 0 {
-		_, _ = botApi.Send(msg)
+	if botApi == nil {
+		log.Error("Bot API未初始化，无法发送消息")
+		return
+	}
 
+	if msg.ChatID != 0 {
+		_, err := botApi.Send(msg)
+		if err != nil {
+			log.Error("发送消息失败:", err)
+		}
 		return
 	}
 
 	var chatId, err = strconv.ParseInt(config.GetTGBotAdminId(), 10, 64)
-	if err == nil {
-		msg.ChatID = chatId
-		_, _ = botApi.Send(msg)
+	if err != nil {
+		log.Error("解析管理员ID失败:", err)
+		return
+	}
+
+	msg.ChatID = chatId
+	_, err = botApi.Send(msg)
+	if err != nil {
+		log.Error("发送消息到管理员失败:", err)
 	}
 }
 
 func DeleteMsg(msgId int) {
+	if botApi == nil {
+		log.Error("Bot API未初始化，无法删除消息")
+		return
+	}
+
 	var chatId, err = strconv.ParseInt(config.GetTGBotAdminId(), 10, 64)
-	if err == nil {
-		_, _ = botApi.Send(tgbotapi.NewDeleteMessage(chatId, msgId))
+	if err != nil {
+		log.Error("解析管理员ID失败:", err)
+		return
+	}
+
+	_, err = botApi.Send(tgbotapi.NewDeleteMessage(chatId, msgId))
+	if err != nil {
+		log.Error("删除消息失败:", err)
 	}
 }
 
 func EditAndSendMsg(msgId int, text string, replyMarkup tgbotapi.InlineKeyboardMarkup) {
+	if botApi == nil {
+		log.Error("Bot API未初始化，无法编辑消息")
+		return
+	}
+
 	var chatId, err = strconv.ParseInt(config.GetTGBotAdminId(), 10, 64)
-	if err == nil {
-		_, _ = botApi.Send(tgbotapi.NewEditMessageTextAndMarkup(chatId, msgId, text, replyMarkup))
+	if err != nil {
+		log.Error("解析管理员ID失败:", err)
+		return
+	}
+
+	_, err = botApi.Send(tgbotapi.NewEditMessageTextAndMarkup(chatId, msgId, text, replyMarkup))
+	if err != nil {
+		log.Error("编辑消息失败:", err)
 	}
 }

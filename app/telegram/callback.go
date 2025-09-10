@@ -211,12 +211,12 @@ func cbOrderDetailAction(tradeId string) {
 				tgbotapi.NewInlineKeyboardButtonURL("🌏商户网站", _site.String()),
 			},
 		}
-		
+
 		// 只有在TradeHash不为空且不等于TradeId时才添加交易链接
 		if o.TradeHash != "" && o.TradeHash != o.TradeId {
 			buttons[0] = append(buttons[0], tgbotapi.NewInlineKeyboardButtonURL("📝交易明细", detailUrl+o.TradeHash))
 		}
-		
+
 		_msg.ReplyMarkup = tgbotapi.InlineKeyboardMarkup{
 			InlineKeyboard: buttons,
 		}
@@ -255,7 +255,7 @@ func getWalletInfoByTRONGridAPI(address string) string {
 		return ""
 	}
 	req.Header.Set("TRON-PRO-API-KEY", apiKey)
-	
+
 	resp, err := client.Do(req)
 	if err != nil {
 		log.Error("GetWalletInfoByAddress client.Get(url)", err)
@@ -277,7 +277,7 @@ func getWalletInfoByTRONGridAPI(address string) string {
 		return ""
 	}
 	result := gjson.ParseBytes(all)
-	
+
 	// TronGrid API响应格式适配
 	if !result.Get("success").Bool() {
 		log.Error("TRON Grid API返回失败:", result.Get("error").String())
@@ -293,11 +293,11 @@ func getWalletInfoByTRONGridAPI(address string) string {
 	// 解析账户基本信息
 	var createTime = time.UnixMilli(accountData.Get("create_time").Int())
 	var balance = accountData.Get("balance").Float() / 1000000 // sun转TRX
-	
+
 	// 获取资源信息
 	var netUsed = accountData.Get("net_usage").Int()
 	var netLimit = accountData.Get("net_limit").Int()
-	var energyUsed = accountData.Get("energy_usage").Int() 
+	var energyUsed = accountData.Get("energy_usage").Int()
 	var energyLimit = accountData.Get("energy_limit").Int()
 
 	var text = `
@@ -337,7 +337,7 @@ func getWalletInfoByTRONScanAPI(address string) string {
 		return ""
 	}
 	req.Header.Set("TRON-PRO-API-KEY", apiKey)
-	
+
 	resp, err := client.Do(req)
 	if err != nil {
 		log.Error("GetWalletInfoByAddress client.Get(url)", err)
@@ -398,32 +398,32 @@ func getTronUSDTBalance(address string) float64 {
 	// USDT TRC20合约地址
 	var usdtContract = "TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t"
 	var url = fmt.Sprintf("https://api.trongrid.io/v1/contracts/%s/triggers", usdtContract)
-	
+
 	var client = http.Client{Timeout: time.Second * 10}
 	req, err := http.NewRequest("GET", url+"?owner_address="+address, nil)
 	if err != nil {
 		return 0
 	}
 	req.Header.Set("TRON-PRO-API-KEY", apiKey)
-	
+
 	resp, err := client.Do(req)
 	if err != nil || resp.StatusCode != 200 {
 		// 如果API调用失败，尝试直接查询账户TRC20代币余额
 		return getTronTRC20Balance(address, usdtContract)
 	}
-	
+
 	defer resp.Body.Close()
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return 0
 	}
-	
+
 	result := gjson.ParseBytes(body)
 	if result.Get("success").Bool() && len(result.Get("data").Array()) > 0 {
 		balance := result.Get("data.0.balance").Float()
 		return balance / 1000000 // USDT有6位小数
 	}
-	
+
 	return 0
 }
 
@@ -539,7 +539,7 @@ func getWalletInfoETH(name string, unit string, chain string, host string, apiKe
 				}
 			}
 
-			var rawValue = resultUSDT.Get("result").String()
+			var rawValue = tx.Get("value").String()
 			value, ok := new(big.Int).SetString(rawValue, 10)
 			tokenDecimals, _ := strconv.ParseInt(tx.Get("tokenDecimal").String(), 10, 32)
 			tokenSymbol := tx.Get("tokenSymbol").String()

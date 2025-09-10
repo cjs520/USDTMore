@@ -2,14 +2,13 @@ package monitor
 
 import (
 	"USDTMore/app/config"
+	httpClient "USDTMore/app/http"
 	"USDTMore/app/log"
 	"USDTMore/app/usdt"
 	"errors"
 	"fmt"
 	"github.com/shopspring/decimal"
 	"github.com/tidwall/gjson"
-	"io"
-	"net/http"
 	"strconv"
 	"time"
 )
@@ -50,42 +49,44 @@ func OkxUsdtRateStart() {
 func getOkxUsdtCnySellPrice() (decimal.Decimal, error) {
 	var _zero = decimal.NewFromInt(0)
 	var t = strconv.Itoa(int(time.Now().Unix()))
-	var okxApi = "https://www.okx.com/v4/c2c/express/price?crypto=USDT&fiat=CNY&side=sell&t=" + t
-	client := http.Client{Timeout: time.Second * 5}
-	req, _ := http.NewRequest("GET", okxApi, nil)
-	req.Header.Set("User-Agent", "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/117.0.0.0 Safari/537.36")
-	resp, err := client.Do(req)
+	var requestURL = "https://www.okx.com/v4/c2c/express/price?crypto=USDT&fiat=CNY&side=sell&t=" + t
+
+	// 设置请求头，模拟真实浏览器
+	headers := map[string]string{
+		"User-Agent":      "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/117.0.0.0 Safari/537.36",
+		"Accept":          "application/json, text/plain, */*",
+		"Accept-Language": "zh-CN,zh;q=0.9,en;q=0.8",
+		"Referer":         "https://www.okx.com/",
+	}
+
+	// 使用统一的HTTP客户端发送请求，包含重试机制
+	resp, err := httpClient.DefaultClient.Get(requestURL, headers, config.GetMaxRetries())
 	if err != nil {
-
-		return _zero, errors.New("okx resp error:" + err.Error())
+		return _zero, fmt.Errorf("OKX API请求失败: %w", err)
 	}
 
-	defer resp.Body.Close()
-	if resp.StatusCode != 200 {
-
-		return _zero, errors.New("okx resp status code:" + strconv.Itoa(resp.StatusCode))
-	}
-
-	all, err := io.ReadAll(resp.Body)
+	// 获取响应内容
+	body, err := httpClient.GetResponseBody(resp)
 	if err != nil {
-
-		return _zero, errors.New("okx resp read error:" + err.Error())
+		return _zero, fmt.Errorf("读取OKX响应失败: %w", err)
 	}
 
-	result := gjson.ParseBytes(all)
+	result := gjson.ParseBytes(body)
+
+	// 检查API响应错误
 	if result.Get("error_code").Int() != 0 {
-
-		return _zero, errors.New("json parse error:" + result.Get("error_message").String())
+		return _zero, fmt.Errorf("OKX API错误: %s", result.Get("error_message").String())
 	}
 
+	// 检查价格数据
 	if result.Get("data.price").Exists() {
 		var _ret = result.Get("data.price").Float()
 		if _ret <= 0 {
-			return _zero, errors.New("okx resp json data.price <= 0")
+			return _zero, errors.New("OKX返回的价格数据无效: price <= 0")
 		}
 
 		return decimal.NewFromFloat(_ret), nil
 	}
 
-	return _zero, errors.New("okx resp json data.price not found")
+	return _zero, errors.New("OKX响应中未找到价格数据")
 }

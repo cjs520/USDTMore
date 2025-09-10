@@ -22,25 +22,33 @@ func HandleMessage(msg *tgbotapi.Message) {
 	// 如果发送的是地址，则会查询TRON地址的金额
 	if msg.Text != "" && help.IsValidTRONWalletAddress(msg.Text) {
 		_addresses := strings.Split(strings.TrimSpace(msg.Text), ":")
-		go queryAnyTrc20AddressInfo(msg, _addresses[1])
+		if len(_addresses) >= 2 {
+			go queryAnyTrc20AddressInfo(msg, _addresses[1])
+		}
 	}
 
 	// 如果发送的是地址，则会查询地址的金额
 	if msg.Text != "" && help.IsValidPOLWalletAddress(msg.Text) {
 		_addresses := strings.Split(strings.TrimSpace(msg.Text), ":")
-		go queryAnyPOLAddressInfo(msg, _addresses[1])
+		if len(_addresses) >= 2 {
+			go queryAnyPOLAddressInfo(msg, _addresses[1])
+		}
 	}
 
 	// 如果发送的是地址，则会查询地址的金额
 	if msg.Text != "" && help.IsValidOPTWalletAddress(msg.Text) {
 		_addresses := strings.Split(strings.TrimSpace(msg.Text), ":")
-		go queryAnyOPTAddressInfo(msg, _addresses[1])
+		if len(_addresses) >= 2 {
+			go queryAnyOPTAddressInfo(msg, _addresses[1])
+		}
 	}
 
 	// 如果发送的是地址，则会查询地址的金额
 	if msg.Text != "" && help.IsValidBSCWalletAddress(msg.Text) {
 		_addresses := strings.Split(strings.TrimSpace(msg.Text), ":")
-		go queryAnyBSCAddressInfo(msg, _addresses[1])
+		if len(_addresses) >= 2 {
+			go queryAnyBSCAddressInfo(msg, _addresses[1])
+		}
 	}
 }
 
@@ -90,6 +98,10 @@ func addWalletAddress(msg *tgbotapi.Message) {
 	}
 
 	_addresses := strings.Split(address, ":")
+	if len(_addresses) < 2 {
+		SendMsg(tgbotapi.NewMessage(msg.Chat.ID, "钱包地址格式不正确，应为: CHAIN:ADDRESS"))
+		return
+	}
 
 	_exists := model.ExistsAddress(_addresses[0], _addresses[1])
 	if !_exists {

@@ -21,6 +21,11 @@ const TronServerApiGrid = "TRON_GRID" //
 const defaultPaymentMinAmount = 0.01  //
 const defaultPaymentMaxAmount = 99999 //
 
+// 网络请求配置常量
+const defaultHttpTimeout = 30 // HTTP请求默认超时时间（秒）
+const defaultMaxRetries = 3   // 默认最大重试次数
+const defaultRetryDelay = 1   // 默认重试延迟（秒）
+
 // 当前路径
 var runPath string
 
@@ -136,7 +141,8 @@ func GetTronScanApiKey() string {
 	if data := help.GetEnv("TRON_SCAN_API_KEY"); data != "" {
 		return strings.TrimSpace(data)
 	}
-	return "c0634c05-b4db-4fa4-a14a-93f2c2d5b65e"
+	// 移除硬编码的默认API密钥，强制用户设置
+	return ""
 }
 
 /*
@@ -169,22 +175,22 @@ func GetEtherscanApiKey() string {
 	if data := help.GetEnv("ETHERSCAN_API_KEY"); data != "" {
 		return strings.TrimSpace(data)
 	}
-	
+
 	// 向后兼容：依次尝试旧的各链专用API Key
 	keys := []string{
 		"POLYGON_SCAN_API_KEY",
-		"OPTIMISM_EXPLORER_API_KEY", 
+		"OPTIMISM_EXPLORER_API_KEY",
 		"BSC_SCAN_API_KEY",
 		"ARBITRUM_SCAN_API_KEY",
 		"XLAYER_SCAN_API_KEY",
 	}
-	
+
 	for _, key := range keys {
 		if data := help.GetEnv(key); data != "" {
 			return strings.TrimSpace(data)
 		}
 	}
-	
+
 	return ""
 }
 
@@ -230,7 +236,8 @@ func GetSolanaApiKey() string {
 	if data := help.GetEnv("SOLANA_API_KEY"); data != "" {
 		return strings.TrimSpace(data)
 	}
-	return "YourSolanaApiKey"
+	// Solscan API可以不需要密钥，但建议设置以提高限流
+	return ""
 }
 
 /*
@@ -240,7 +247,8 @@ func GetAptosApiKey() string {
 	if data := help.GetEnv("APTOS_API_KEY"); data != "" {
 		return strings.TrimSpace(data)
 	}
-	return "YourAptosApiKey"
+	// Aptos官方API是公开的，不需要API密钥
+	return ""
 }
 
 // ERC-20 合约地址 (Polygon 主网上的 USDT)
@@ -582,4 +590,50 @@ func GetDBTimezone() string {
 		return strings.TrimSpace(data)
 	}
 	return "Asia/Shanghai"
+}
+
+/*
+获取HTTP请求超时时间（秒）
+*/
+func GetHttpTimeout() int {
+	if data := help.GetEnv("HTTP_TIMEOUT"); data != "" {
+		if timeout, err := strconv.Atoi(data); err == nil && timeout > 0 {
+			return timeout
+		}
+	}
+	return defaultHttpTimeout
+}
+
+/*
+获取最大重试次数
+*/
+func GetMaxRetries() int {
+	if data := help.GetEnv("MAX_RETRIES"); data != "" {
+		if retries, err := strconv.Atoi(data); err == nil && retries >= 0 {
+			return retries
+		}
+	}
+	return defaultMaxRetries
+}
+
+/*
+获取重试延迟时间（秒）
+*/
+func GetRetryDelay() int {
+	if data := help.GetEnv("RETRY_DELAY"); data != "" {
+		if delay, err := strconv.Atoi(data); err == nil && delay > 0 {
+			return delay
+		}
+	}
+	return defaultRetryDelay
+}
+
+/*
+是否启用请求日志
+*/
+func IsRequestLogEnabled() bool {
+	if data := help.GetEnv("REQUEST_LOG_ENABLED"); data != "" {
+		return data == "true" || data == "1"
+	}
+	return false
 }
