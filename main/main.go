@@ -4,6 +4,7 @@ import (
 	"USDTMore/app/config"
 	"USDTMore/app/model"
 	"USDTMore/app/monitor"
+	"USDTMore/app/security"
 	"USDTMore/app/web"
 	"fmt"
 	"os"
@@ -15,13 +16,14 @@ import (
 const Version = "1.0.0"
 
 func main() {
-	if err := model.Init(); err != nil {
+	// 启动时进行安全配置检查
+	security.ValidateSecurityOnStartup()
 
+	if err := model.Init(); err != nil {
 		panic("数据库初始化失败：" + err.Error())
 	}
 
 	if config.GetTGBotToken() == "" || config.GetTGBotAdminId() == "" {
-
 		panic("请配置参数 TG_BOT_TOKEN 和 TG_BOT_ADMIN_ID")
 	}
 

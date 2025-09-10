@@ -389,8 +389,13 @@ func GetPolygonConfirmation() int {
 	if data := help.GetEnv("ETH_CONFIRMATION"); data != "" {
 		num, err := strconv.Atoi(data)
 		if err != nil {
-			// 如果转换失败，处理错误
-			fmt.Println("转换错误:", err)
+			// 如果转换失败，记录错误并返回默认值
+			fmt.Printf("ETH_CONFIRMATION配置错误，使用默认值50: %v\n", err)
+			return 50
+		}
+		// 验证配置值的合理性
+		if num < 0 || num > 1000 {
+			fmt.Printf("ETH_CONFIRMATION配置值超出合理范围(0-1000)，使用默认值50: %d\n", num)
 			return 50
 		}
 		return num
@@ -647,39 +652,45 @@ func ValidateSecurityConfig() []string {
 	// 检查AUTH_TOKEN强度
 	authToken := GetAuthToken()
 	if authToken == "" || authToken == "123234" {
-		warnings = append(warnings, "AUTH_TOKEN未设置或使用默认值，存在安全风险")
+		warnings = append(warnings, "AUTH_TOKEN未设置或使用默认值，存在严重安全风险")
 	} else if len(authToken) < 16 {
 		warnings = append(warnings, "AUTH_TOKEN长度过短，建议至少16位")
 	}
 
 	// 检查是否在生产环境使用HTTP
-	if help.GetEnv("ENVIRONMENT") == "production" {
+	if strings.ToLower(help.GetEnv("ENVIRONMENT")) == "production" {
 		if help.GetEnv("FORCE_HTTPS") != "true" {
 			warnings = append(warnings, "生产环境建议启用FORCE_HTTPS=true")
 		}
 	}
 
-	// 检查API密钥配置
-	apiKeys := map[string]string{
-		"TRON_SCAN_API_KEY":      GetTronScanApiKey(),
-		"TRON_GRID_API_KEY":      GetTronGridApiKey(),
-		"ETHERSCAN_API_KEY":      GetEtherscanApiKey(),
-		"POLYGON_SCAN_API_KEY":   GetPolygonScanApiKey(),
-		"OPTIMISM_EXPLORER_API_KEY": GetOptimismExplorerApiKey(),
-		"BSC_SCAN_API_KEY":       GetBscExplorerApiKey(),
-		"ARBITRUM_SCAN_API_KEY":  GetArbitrumScanApiKey(),
-		"XLAYER_SCAN_API_KEY":    GetXLayerApiKey(),
+	// 检查必需的API密钥配置（移除未使用的变量）
+
+	// 检查TRON API密钥（至少需要一个）
+	if GetTronScanApiKey() == "" && GetTronGridApiKey() == "" {
+		warnings = append(warnings, "TRON_SCAN_API_KEY和TRON_GRID_API_KEY至少需要设置一个")
 	}
 
-	missingKeys := []string{}
-	for key, value := range apiKeys {
-		if value == "" {
-			missingKeys = append(missingKeys, key)
+	// 检查EVM兼容链API密钥
+	if GetEtherscanApiKey() == "" {
+		warnings = append(warnings, "ETHERSCAN_API_KEY是必需的，用于EVM兼容链交易查询")
+	}
+
+	// 检查数据库配置
+	if GetDBType() == "postgres" {
+		if GetDBPassword() == "" {
+			warnings = append(warnings, "PostgreSQL数据库密码未设置，存在安全风险")
+		}
+		if GetDBHost() == "localhost" && strings.ToLower(help.GetEnv("ENVIRONMENT")) == "production" {
+			warnings = append(warnings, "生产环境建议使用专用数据库服务器")
 		}
 	}
 
-	if len(missingKeys) > 0 {
-		warnings = append(warnings, fmt.Sprintf("以下API密钥未配置: %s", strings.Join(missingKeys, ", ")))
+	// 检查支付金额范围配置
+	minAmount := GetPaymentMinAmount()
+	maxAmount := GetPaymentMaxAmount()
+	if minAmount.GreaterThanOrEqual(maxAmount) {
+		warnings = append(warnings, "支付金额范围配置错误：最小金额应小于最大金额")
 	}
 
 	return warnings

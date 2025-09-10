@@ -49,7 +49,7 @@ func GenerateSignature(data map[string]interface{}, token string) string {
 		keys = append(keys, k)
 	}
 	sort.Strings(keys)
-	
+
 	var sign strings.Builder
 	for _, k := range keys {
 		v := data[k]
@@ -79,7 +79,7 @@ func GenerateSignatureMD5(data map[string]interface{}, token string) string {
 		keys = append(keys, k)
 	}
 	sort.Strings(keys)
-	
+
 	var sign strings.Builder
 	for _, k := range keys {
 		v := data[k]
@@ -264,12 +264,12 @@ func MaskAddress(address string) string {
 func FilterSensitiveData(data map[string]interface{}) map[string]interface{} {
 	filtered := make(map[string]interface{})
 	sensitiveFields := map[string]bool{
-		"signature":              true,
-		"token":                  true,
-		"auth_token":             true,
-		"block_transaction_id":   false, // 区块链交易哈希可以记录
-		"trade_id":               false, // 订单ID可以记录
-		"order_id":               false, // 客户订单ID可以记录
+		"signature":            true,
+		"token":                true,
+		"auth_token":           true,
+		"block_transaction_id": false, // 区块链交易哈希可以记录
+		"trade_id":             false, // 订单ID可以记录
+		"order_id":             false, // 客户订单ID可以记录
 	}
 
 	for k, v := range data {

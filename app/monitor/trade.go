@@ -25,11 +25,14 @@ const usdtToken = "TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t"
 func TradeStart() {
 	log.Info("交易监控启动.")
 
-	for range time.Tick(time.Second * 5) {
+	ticker := time.NewTicker(time.Second * 5)
+	defer ticker.Stop()
+
+	for range ticker.C {
 		var recentTransferTotal float64
 		var _lock, err = getAllPendingOrders()
 		if err != nil {
-			log.Error(err.Error())
+			log.Error("获取待支付订单失败: " + err.Error())
 			continue
 		}
 
@@ -44,7 +47,7 @@ func TradeStart() {
 				result, err = getUsdtTrc20TransByTronGrid(_row.Address)
 			}
 			if err != nil {
-				log.Error(err.Error())
+				log.Error(fmt.Sprintf("[TRON] 查询交易失败 %s: %v", _row.Address, err))
 				continue
 			}
 
@@ -74,7 +77,7 @@ func TradeStart() {
 
 			result, err = getUsdtPolygonTransByPolygonScan(_row.Address)
 			if err != nil {
-				log.Error(err.Error())
+				log.Error(fmt.Sprintf("[POLY] 查询交易失败 %s: %v", _row.Address, err))
 				continue
 			}
 
@@ -89,7 +92,7 @@ func TradeStart() {
 
 			result, err = getUsdtOptimismTransByOptimismExplorer(_row.Address)
 			if err != nil {
-				log.Error(err.Error())
+				log.Error(fmt.Sprintf("[OP] 查询交易失败 %s: %v", _row.Address, err))
 				continue
 			}
 
@@ -104,7 +107,7 @@ func TradeStart() {
 
 			result, err = getUsdtBscTransByBscScan(_row.Address)
 			if err != nil {
-				log.Error(err.Error())
+				log.Error(fmt.Sprintf("[BSC] 查询交易失败 %s: %v", _row.Address, err))
 				continue
 			}
 
@@ -119,7 +122,7 @@ func TradeStart() {
 
 			result, err = getUsdtArbitrumTransByArbitrumScan(_row.Address)
 			if err != nil {
-				log.Error(err.Error())
+				log.Error(fmt.Sprintf("[ARB] 查询交易失败 %s: %v", _row.Address, err))
 				continue
 			}
 
@@ -134,7 +137,7 @@ func TradeStart() {
 
 			result, err = getUsdtXLayerTransByXLayerScan(_row.Address)
 			if err != nil {
-				log.Error(err.Error())
+				log.Error(fmt.Sprintf("[XLAYER] 查询交易失败 %s: %v", _row.Address, err))
 				continue
 			}
 
@@ -149,7 +152,7 @@ func TradeStart() {
 
 			result, err = getUsdtSolanaTransBySolscan(_row.Address)
 			if err != nil {
-				log.Error(err.Error())
+				log.Error(fmt.Sprintf("[SOL] 查询交易失败 %s: %v", _row.Address, err))
 				continue
 			}
 
@@ -164,7 +167,7 @@ func TradeStart() {
 
 			result, err = getUsdtAptosTransByAptosLabs(_row.Address)
 			if err != nil {
-				log.Error(err.Error())
+				log.Error(fmt.Sprintf("[APT] 查询交易失败 %s: %v", _row.Address, err))
 				continue
 			}
 
@@ -232,7 +235,16 @@ func handlePaymentTransactionForTronScan(_lock map[string]model.TradeOrders, _to
 
 		var _transId = transfer.Get("transaction_id").String()
 		var _fromAddress = transfer.Get("from_address").String()
-		if _order.OrderSetSucc(_fromAddress, _transId, _createdAt) == nil {
+
+		log.Info(fmt.Sprintf("[TRON] 处理订单支付: order_id=%s, txid=%s, from=%s, amount=%s",
+			_order.TradeId, _transId, _fromAddress, _quant))
+
+		if err := _order.OrderSetSucc(_fromAddress, _transId, _createdAt); err != nil {
+			log.Error(fmt.Sprintf("[TRON] 订单设置成功状态失败: order_id=%s, txid=%s, error=%v",
+				_order.TradeId, _transId, err))
+		} else {
+			log.Info(fmt.Sprintf("[TRON] 订单支付成功，发送回调: order_id=%s, txid=%s",
+				_order.TradeId, _transId))
 			// 通知订单支付成功
 			go notify.OrderNotify(_order)
 			// TG发送订单信息
@@ -270,10 +282,18 @@ func handlePaymentTransactionForTronGrid(_lock map[string]model.TradeOrders, _to
 
 		var _transId = transfer.Get("transaction_id").String()
 		var _fromAddress = transfer.Get("from").String()
-		if _order.OrderSetSucc(_fromAddress, _transId, _createdAt) == nil {
+
+		log.Info(fmt.Sprintf("[TRON] 处理订单支付: order_id=%s, txid=%s, from=%s, amount=%s",
+			_order.TradeId, _transId, _fromAddress, _quant))
+
+		if err := _order.OrderSetSucc(_fromAddress, _transId, _createdAt); err != nil {
+			log.Error(fmt.Sprintf("[TRON] 订单设置成功状态失败: order_id=%s, txid=%s, error=%v",
+				_order.TradeId, _transId, err))
+		} else {
+			log.Info(fmt.Sprintf("[TRON] 订单支付成功，发送回调: order_id=%s, txid=%s",
+				_order.TradeId, _transId))
 			// 通知订单支付成功
 			go notify.OrderNotify(_order)
-
 			// TG发送订单信息
 			go telegram.SendTradeSuccMsg(_order)
 		}
@@ -994,7 +1014,16 @@ func handlePaymentTransactionForSolana(_lock map[string]model.TradeOrders, _toAd
 		// 处理成功的支付
 		var _transId = transfer.Get("txHash").String()
 		var _fromAddress = transfer.Get("src").String()
-		if _order.OrderSetSucc(_fromAddress, _transId, _createdAt) == nil {
+
+		log.Info(fmt.Sprintf("[SOL] 处理订单支付: order_id=%s, txid=%s, from=%s, amount=%s",
+			_order.TradeId, _transId, _fromAddress, _rawQuant.String()))
+
+		if err := _order.OrderSetSucc(_fromAddress, _transId, _createdAt); err != nil {
+			log.Error(fmt.Sprintf("[SOL] 订单设置成功状态失败: order_id=%s, txid=%s, error=%v",
+				_order.TradeId, _transId, err))
+		} else {
+			log.Info(fmt.Sprintf("[SOL] 订单支付成功，发送回调: order_id=%s, txid=%s",
+				_order.TradeId, _transId))
 			go notify.OrderNotify(_order)
 			go telegram.SendTradeSuccMsg(_order)
 		}
@@ -1107,7 +1136,16 @@ func handlePaymentTransactionForAptos(_lock map[string]model.TradeOrders, _toAdd
 			// 处理成功支付
 			_transId := tx.Get("hash").String()
 			_fromAddress := tx.Get("sender").String()
-			if _order.OrderSetSucc(_fromAddress, _transId, _createdAt) == nil {
+
+			log.Info(fmt.Sprintf("[APT] 处理订单支付: order_id=%s, txid=%s, from=%s, amount=%s",
+				_order.TradeId, _transId, _fromAddress, _rawQuant.String()))
+
+			if err := _order.OrderSetSucc(_fromAddress, _transId, _createdAt); err != nil {
+				log.Error(fmt.Sprintf("[APT] 订单设置成功状态失败: order_id=%s, txid=%s, error=%v",
+					_order.TradeId, _transId, err))
+			} else {
+				log.Info(fmt.Sprintf("[APT] 订单支付成功，发送回调: order_id=%s, txid=%s",
+					_order.TradeId, _transId))
 				go notify.OrderNotify(_order)
 				go telegram.SendTradeSuccMsg(_order)
 			}

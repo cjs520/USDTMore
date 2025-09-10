@@ -46,12 +46,12 @@ func ValidateSecurityOnStartup() {
 */
 func ValidateCallbackURLSecurity(urls []string) []string {
 	var unsafeURLs []string
-	
+
 	for _, url := range urls {
 		if !help.IsValidCallbackURL(url) {
 			unsafeURLs = append(unsafeURLs, url)
 		}
 	}
-	
+
 	return unsafeURLs
 }
