@@ -10,26 +10,42 @@
 
 ## 🚀 快速部署
 
-### 方法一：SQLite版本（简单部署）
+### 方法一：PostgreSQL部署
 
 ```bash
+# 1. 启动PostgreSQL数据库
+docker run -d \
+  --name postgres \
+  -e POSTGRES_DB=usdtmore \
+  -e POSTGRES_USER=usdtmore \
+  -e POSTGRES_PASSWORD=your_password \
+  -p 5432:5432 \
+  postgres:15
+
+# 2. 启动USDTMore
 docker run -d --restart=always --name usdtmore -p 6080:6080 \
   -e TG_BOT_TOKEN=你的机器人Token \
   -e TG_BOT_ADMIN_ID=你的管理员ID \
   -e AUTH_TOKEN=你的验证密钥 \
   -e APP_URI=https://你的域名.com \
   -e REWRITE_HTTPS=true \
-  -e DB_TYPE=sqlite \
+  -e DB_HOST=postgres \
+  -e DB_USER=usdtmore \
+  -e DB_PASSWORD=your_password \
+  -e DB_NAME=usdtmore \
   -e ETHERSCAN_API_KEY=你的Etherscan_API_Key \
   -e TRON_SCAN_API_KEY=你的TRON_SCAN_API_KEY \
   -e SOLANA_API_KEY=你的Solana_API_Key \
-  -v usdtmore_data:/app/data \
+  --link postgres:postgres \
   zxzx412/usdtmore:latest
+
+# 3. 查看运行状态
+docker logs -f usdtmore
 ```
 
 ### 方法二：Docker Compose（推荐）
 
-#### SQLite版本 (docker-compose.yml)
+#### PostgreSQL版本 (docker-compose.yml)
 
 ```yaml
 version: '3.8'
@@ -43,7 +59,11 @@ services:
       - "6080:6080"
     environment:
       # ===== 数据库配置 =====
-      DB_TYPE: "sqlite"                       # 数据库类型
+      DB_HOST: "postgres"
+      DB_PORT: "5432"
+      DB_USER: "usdtmore"
+      DB_PASSWORD: "your_password"
+      DB_NAME: "usdtmore"
       
       # ===== 必需配置项 =====
       TG_BOT_TOKEN: "你的机器人Token"
@@ -74,18 +94,46 @@ services:
       # ===== Telegram通知配置 (可选) =====
       TG_BOT_GROUP_ID: "你的群组ID"        # 交易通知群组
     volumes:
-      - usdtmore_data:/app/data             # 数据库持久化 (SQLite)
       - usdtmore_logs:/app/logs             # 日志持久化
+    depends_on:
+      postgres:
+        condition: service_healthy
     healthcheck:
       test: ["CMD-SHELL", "curl -f http://localhost:6080/ || exit 1"]
       interval: 30s
       timeout: 10s
       retries: 3
       start_period: 40s
+    networks:
+      - usdtmore_network
+
+  postgres:
+    image: postgres:15-alpine
+    container_name: usdtmore_postgres
+    restart: always
+    environment:
+      POSTGRES_DB: usdtmore
+      POSTGRES_USER: usdtmore
+      POSTGRES_PASSWORD: your_password
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U usdtmore"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - usdtmore_network
 
 volumes:
-  usdtmore_data:
+  postgres_data:
   usdtmore_logs:
+
+networks:
+  usdtmore_network:
+    driver: bridge
 ```
 
 #### PostgreSQL高性能版本 (docker-compose.postgresql.yml)
@@ -204,14 +252,7 @@ networks:
     driver: bridge
 ```
 
-## 🗄️ 数据库选择指南 (2025.09更新)
-
-### SQLite（默认推荐）
-**适用场景**：个人使用、小规模部署
-- ✅ **零配置**，开箱即用
-- ✅ **轻量级**，资源占用少
-- ✅ **简单部署**，单容器搞定
-- ⚠️ 并发限制，适合日订单量 < 500
+## 🗄️ PostgreSQL数据库选择指南 (2025.09更新)
 
 ### PostgreSQL（标准推荐）
 **适用场景**：中小型生产环境
@@ -229,31 +270,19 @@ networks:
 - ✅ **负载均衡**，多实例分流
 - ⚠️ 资源占用较大，配置复杂度高
 
-#### 📊 配置对比表
+#### 📊 PostgreSQL配置对比表
 
-| 特性 | SQLite | PostgreSQL标准 | 生产级高可用 |
-|------|--------|---------------|-------------|
-| **部署复杂度** | ⭐ | ⭐⭐ | ⭐⭐⭐⭐ |
-| **资源占用** | < 100MB | 200-500MB | 1-2GB |
-| **并发支持** | < 10 | 50+ | 200+ |
-| **可用性** | 95% | 99% | 99.9% |
-| **监控能力** | 基础 | 标准 | 企业级 |
-| **故障恢复** | 手动 | 半自动 | 全自动 |
-| **适用订单量** | < 500/日 | < 5000/日 | 无限制 |
+| 特性 | PostgreSQL标准 | 生产级高可用 |
+|------|---------------|-------------|
+| **部署复杂度** | ⭐⭐ | ⭐⭐⭐⭐ |
+| **资源占用** | 200-500MB | 1-2GB |
+| **并发支持** | 50+ | 200+ |
+| **可用性** | 99% | 99.9% |
+| **监控能力** | 标准 | 企业级 |
+| **故障恢复** | 半自动 | 全自动 |
+| **适用订单量** | < 5000/日 | 无限制 |
 
 ## 🚀 部署命令
-
-### SQLite版本部署
-```bash
-# 启动SQLite版本
-docker-compose up -d
-
-# 查看日志
-docker-compose logs -f usdtmore
-
-# 停止服务
-docker-compose down
-```
 
 ### PostgreSQL版本部署
 ```bash

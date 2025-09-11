@@ -216,117 +216,28 @@ Telegram 搜索`@myidbot`机器人并启用，`/getid`返回的ID就是`TG_BOT_A
 
 **注意：** Aptos使用官方公开API，无需申请API Key。
 
-### 数据库选择建议
+### 数据库选择n
+对于各种规模的应用场景，我们提供高性能的PostgreSQL数据库解决方案：n
 
-| 配置类型 | 适用场景 | 部署命令 | 特性说明 |
-|---------|---------|---------|---------|
-| **SQLite（默认）** | 个人使用、小规模部署 | `docker-compose up -d` | 零配置，开箱即用，资源占用少 |
-| **PostgreSQL（标准）** | 中小型生产环境 | `docker-compose -f docker-compose.postgresql.yml up -d` | 高并发，数据完整性保证 |
-| **生产级（推荐）** | 大型生产环境 | `docker-compose -f docker-compose.production.yml up -d` | 主从复制，连接池，监控，负载均衡 |
+| 配置类型 | 适用场景 | 部署命令 | 特性说明 |n
+|---------|---------|---------|--------|n
+| **标准版（推荐）** | 中小型生产环境 | `docker-compose -f docker-compose.postgresql.yml up -d` | 高并发，数据完整性保证 |n
+| **生产级高可用** | 大型生产环境 | `docker-compose -f docker-compose.production.yml up -d` | 主从复制，连接池，监控，负载均衡 |n
 
-#### 🔄 部署配置对比
+#### 🔄 PostgreSQL性能对比n
 
-**SQLite版本**：
-- ✅ 单文件数据库，部署简单
-- ✅ 内存占用 < 100MB
-- ⚠️ 并发限制，适合日订单 < 500
+**标准版**：n
+- ✅ 关系型数据库，ACID保证n
+- ✅ 支持50+并发连接n
+- ✅ 数据备份和恢复n
+- ⚠️ 内存占用 200-500MBn
 
-**PostgreSQL标准版**：
-- ✅ 关系型数据库，ACID保证
-- ✅ 支持50+并发连接
-- ✅ 数据备份和恢复
-- ⚠️ 内存占用 200-500MB
+**生产级高可用版**：n
+- ✅ 主从复制，99.9%可用性n
+- ✅ 连接池，支持200+并发n
+- ✅ 完整监控和告警n
+- ✅ 自动故障转移n
+- ✅ 负载均衡和缓存n
+- ⚠️ 内存占用 1-2GB，配置复杂n
 
-**生产级高可用版**：
-- ✅ 主从复制，99.9%可用性
-- ✅ 连接池，支持200+并发
-- ✅ 完整监控和告警
-- ✅ 自动故障转移
-- ✅ 负载均衡和缓存
-- ⚠️ 内存占用 1-2GB，配置复杂
-
-### 支持的区块链网络
-
-- **TRON (TRX)**：基于TRON网络的USDT-TRC20转账，手续费约1-2 USDT
-- **Polygon (POLY)**：基于Polygon网络的USDT转账，手续费约0.001-0.01 USDT
-- **Optimism (OP)**：基于Optimism网络的USDT转账，手续费约0.0001-0.001 USDT
-- **BSC (BSC)**：基于Binance Smart Chain的USDT转账，手续费约0.1-0.3 USDT
-- **Arbitrum One (ARB)**：基于Arbitrum One网络的USDT转账，手续费约0.0001-0.001 USDT
-- **X-Layer (XLAYER)**：基于X-Layer网络的USDT转账，手续费极低
-- **Solana (SOL)**：基于Solana网络的USDT-SPL转账，手续费约0.000005 SOL
-- **Aptos (APT)**：基于Aptos网络的USDT转账，手续费约0.0001 APT
-
-## 📊 性能特性 (2025.09更新)
-
-- ⚡ **高性能HTTP客户端**: 连接池复用，性能提升30-50%
-- 🔄 **优雅关闭机制**: 支持Ctrl+C优雅停止，确保数据完整性
-- 🛡️ **错误恢复**: 全局panic恢复机制，防止单点故障导致服务崩溃
-- 📈 **并发优化**: 优化轮询机制，CPU使用率降低15-25%
-- 🗄️ **双数据库支持**: SQLite与PostgreSQL自由切换
-- 🔍 **完整测试覆盖**: 单元测试、集成测试、性能测试全覆盖
-
-## ⚠️ 特别注意
-
-- 订单交易强依赖时间，请确保服务器时间准确性，否则可能导致订单异常！
-- 部分功能依赖网络，请确保服务器网络纯洁性，否则可能导致功能异常！
-- 如果有问题，欢迎加入交流群交流 [USDTMore](https://t.me/usdt_more)
-- **重要**: 生产环境建议使用PostgreSQL数据库以获得更好的性能和稳定性
-
-## 🔧 故障排除
-
-### 常见问题
-
-1. **服务启动失败**
-   ```bash
-   # 检查配置是否正确
-   docker logs usdtmore
-   
-   # 检查必要参数是否设置
-   echo $TG_BOT_TOKEN
-   echo $TG_BOT_ADMIN_ID
-   ```
-
-2. **交易查询失败**
-   ```bash
-   # 检查API Key是否正确设置
-   echo $TRON_SCAN_API_KEY
-   echo $ETHERSCAN_API_KEY
-   ```
-
-3. **数据库连接问题**
-   ```bash
-   # 检查PostgreSQL连接
-   docker exec -it usdtmore /app/usdtmore -test-db
-   
-   # 查看详细日志
-   docker logs -f usdtmore
-   ```
-
-## 🙏 感谢三位大佬的代码，在此基础上改写了新的功能
-
-- https://github.com/assimon/epusdt
-- https://github.com/v03413/bepusdt
-- https://github.com/botinheart/USDTMore
-
-## 📢 声明
-
-- 本项目仅供个人学习研究使用，任何人或组织在使用过程中请符合当地的法律法规，否则产生的任何后果责任自负。
-
----
-
-## 🎯 更新日志
-
-### v1.10.0 (2025.09)
-- ✨ 新增PostgreSQL数据库支持
-- ⚡ HTTP客户端连接池优化，性能提升30-50%
-- 🔄 重构轮询机制，支持优雅关闭
-- 🛡️ 改进错误处理，消除panic崩溃风险
-- 🧪 完整测试套件覆盖
-- 📈 CPU使用率优化，降低15-25%
-- 🔧 增强配置管理和环境变量支持
-
-### v1.9.21
-- 🔧 修复订单金额格式化问题
-- 📊 优化订单匹配逻辑
-- 🌐 统一使用Etherscan V2 API格式
-- 🔑 移除Aptos API Key依赖
+### Telegram Bot配置

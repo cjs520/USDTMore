@@ -1,26 +1,24 @@
-# USDTMore SQLite到PostgreSQL迁移指南
+# USDTMore PostgreSQL数据库部署指南
 
 ## 概述
 
-本指南详细说明了如何将USDTMore项目从SQLite数据库迁移到PostgreSQL数据库，以获得更好的性能、可靠性和扩展性。
+本指南详细说明了如何在USDTMore项目中部署和配置PostgreSQL数据库，以获得更好的性能、可靠性和扩展性。
 
-## 迁移前准备
+## 部署前准备
 
 ### 1. 环境要求
 
 - PostgreSQL 13+ 
 - Go 1.22+
-- 足够的磁盘空间（至少是当前SQLite数据库的2倍）
+- 足够的磁盘空间（推荐最小 500MB）
 - 管理员权限
 
-### 2. 备份当前数据
+### 2. 准备数据迁移（如适用）
 
 ```bash
-# 备份当前SQLite数据库
-cp /path/to/usdtmore.db /path/to/backup/usdtmore_backup_$(date +%Y%m%d_%H%M%S).db
-
-# 导出SQLite数据为SQL格式
-sqlite3 /path/to/usdtmore.db .dump > sqlite_backup.sql
+# 如果从旧系统迁移数据，建议先备份原始数据
+mkdir -p /path/to/backup
+pg_dump -U old_user -d old_database > database_backup_$(date +%Y%m%d_%H%M%S).sql
 ```
 
 ## 安装步骤
@@ -209,119 +207,19 @@ sudo systemctl reload postgresql
 docker-compose -f docker-compose.postgresql.yml restart postgres-primary
 ```
 
-## 数据类型转换说明
+数据类型优化说明n
+### PostgreSQL数据类型特性n
+| 字段类型 | PostgreSQL类型 | 说明 |n
+|----------|----------------|------|n
+| 主键 | BIGSERIAL PRIMARY KEY | 大规模自增主键 |n
+| 金额 | DECIMAL(18,6) | 高精度小数存储 |n
+| 字符串 | VARCHAR(255) | 灵活字符串处理 |n
+| 布尔值 | SMALLINT | 使用小整数表示布尔值 |n
+| 时间戳 | TIMESTAMP WITH TIME ZONE | 带时区的时间戳 |n
+### 数据类型优化建议n
+1. **金额精度**：使用DECIMAL(18,6)确保财务数据精确计算n
+2. **时间戳一致性**：使用带时区的时间戳，支持全球业务n
+3. **布尔值处理**：通过CHECK约束增强数据验证n
+4. **ID空间**：BIGSERIAL支持大规模数据增长n
 
-### 重要转换
 
-| SQLite类型 | PostgreSQL类型 | 说明 |
-|------------|----------------|------|
-| INTEGER PRIMARY KEY | BIGSERIAL PRIMARY KEY | 自增主键 |
-| REAL | DECIMAL(18,6) | 高精度小数 |
-| VARCHAR(255) | VARCHAR(255) | 字符串 |
-| TINYINT(1) | SMALLINT | 布尔值用小整数 |
-| TIMESTAMP | TIMESTAMP WITH TIME ZONE | 带时区的时间戳 |
-
-### 注意事项
-
-1. **金额字段精度**：SQLite的REAL类型在PostgreSQL中使用DECIMAL(18,6)保证精度
-2. **时间戳**：PostgreSQL使用带时区的时间戳，确保跨时区一致性
-3. **布尔值**：使用SMALLINT替代TINYINT，配合CHECK约束
-4. **自增ID**：使用BIGSERIAL确保足够的ID空间
-
-## 性能对比
-
-| 指标 | SQLite | PostgreSQL |
-|------|--------|------------|
-| 并发连接数 | 1个写入 | 100+个连接 |
-| 事务处理能力 | 低 | 高 |
-| 数据完整性 | 基础 | 强 |
-| 备份恢复 | 文件拷贝 | 在线备份 |
-| 扩展性 | 有限 | 优秀 |
-
-## 故障排除
-
-### 常见问题
-
-1. **连接失败**
-```bash
-# 检查PostgreSQL服务状态
-sudo systemctl status postgresql
-
-# 检查网络连接
-telnet localhost 5432
-```
-
-2. **权限问题**
-```sql
--- 重新授权
-GRANT ALL PRIVILEGES ON DATABASE usdtmore TO usdtmore_user;
-GRANT ALL ON SCHEMA public TO usdtmore_user;
-```
-
-3. **数据类型错误**
-```sql
--- 检查表结构
-\d+ wallet_address
-\d+ trade_orders
-\d+ notify_record
-```
-
-4. **性能问题**
-```bash
-# 运行性能监控
-./scripts/monitor.sh
-
-# 检查慢查询日志
-tail -f /var/log/postgresql/postgresql-*.log
-```
-
-### 回滚方案
-
-如果迁移出现问题，可以快速回滚到SQLite：
-
-```bash
-# 修改环境变量
-DB_TYPE=sqlite
-
-# 恢复SQLite数据库
-cp /path/to/backup/usdtmore_backup_*.db /path/to/usdtmore.db
-
-# 重启应用
-systemctl restart usdtmore
-```
-
-## 生产环境建议
-
-### 高可用配置
-
-1. **主从复制**：启用PostgreSQL流复制
-2. **连接池**：使用PgBouncer优化连接管理
-3. **监控告警**：集成Prometheus + Grafana
-4. **自动备份**：每日全量 + 实时WAL备份
-
-### 安全配置
-
-1. **网络安全**：配置防火墙，限制数据库访问
-2. **用户权限**：使用最小权限原则
-3. **数据加密**：启用SSL连接和数据加密
-4. **审计日志**：记录所有数据库操作
-
-### 维护计划
-
-- **每日**：自动备份、健康检查
-- **每周**：性能报告、日志清理  
-- **每月**：全面性能评估、配置优化
-- **每季度**：容量规划、安全审计
-
-## 联系支持
-
-如果在迁移过程中遇到问题，请：
-
-1. 查看日志文件：`/var/log/usdtmore/*.log`
-2. 运行健康检查：`./scripts/health_check.sh`
-3. 检查监控面板：http://localhost:3000
-4. 提交Issue附带详细错误信息
-
----
-
-*本迁移指南由 Database Administrator 编写，最后更新：2025-09-10*
