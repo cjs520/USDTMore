@@ -4,14 +4,13 @@ import (
 	"USDTMore/app/config"
 	"USDTMore/app/model"
 	"context"
-	"database/sql"
 	"fmt"
 	"log"
 	"os"
+	"strings"
 	"testing"
 	"time"
 
-	"github.com/glebarez/sqlite"
 	_ "github.com/jackc/pgx/v5/stdlib"
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
@@ -53,52 +52,6 @@ func (dct *DatabaseConnectionTester) addResult(testName, description string, pas
 	dct.results = append(dct.results, result)
 }
 
-// TestSQLiteConnection 测试SQLite数据库连接
-func (dct *DatabaseConnectionTester) TestSQLiteConnection() {
-	start := time.Now()
-	
-	// 设置临时SQLite环境
-	os.Setenv("DB_TYPE", "sqlite")
-	testDBPath := "/tmp/test_usdtmore.db"
-	os.Setenv("DB_DIR", "/tmp")
-	
-	// 清理测试数据库文件
-	os.Remove(testDBPath)
-	defer os.Remove(testDBPath)
-	
-	// 测试SQLite连接
-	db, err := gorm.Open(sqlite.Open(testDBPath), &gorm.Config{
-		Logger: logger.Default.LogMode(logger.Warn),
-	})
-	
-	duration := time.Since(start)
-	
-	if err != nil {
-		dct.addResult("SQLite Connection", "Test SQLite database connection", false, duration, err)
-		return
-	}
-	
-	// 测试ping
-	sqlDB, err := db.DB()
-	if err != nil {
-		dct.addResult("SQLite Connection", "Get underlying SQL DB instance", false, duration, err)
-		return
-	}
-	
-	if err := sqlDB.Ping(); err != nil {
-		dct.addResult("SQLite Connection", "Ping SQLite database", false, duration, err)
-		return
-	}
-	
-	// 测试基本操作
-	if err := db.AutoMigrate(&model.WalletAddress{}, &model.TradeOrders{}, &model.NotifyRecord{}); err != nil {
-		dct.addResult("SQLite Connection", "Auto migrate tables", false, duration, err)
-		return
-	}
-	
-	sqlDB.Close()
-	dct.addResult("SQLite Connection", "Complete SQLite connection and migration test", true, duration, nil)
-}
 
 // TestPostgreSQLConnection 测试PostgreSQL数据库连接
 func (dct *DatabaseConnectionTester) TestPostgreSQLConnection() {
@@ -162,11 +115,6 @@ func (dct *DatabaseConnectionTester) TestPostgreSQLConnection() {
 // TestConnectionPooling 测试连接池
 func (dct *DatabaseConnectionTester) TestConnectionPooling() {
 	start := time.Now()
-	
-	if !config.UsePostgreSQL() {
-		dct.addResult("Connection Pooling", "Skip connection pool test for SQLite", true, time.Since(start), nil)
-		return
-	}
 	
 	dsn := config.GetPostgreSQLDSN()
 	db, err := gorm.Open(postgres.Open(dsn), &gorm.Config{
@@ -258,51 +206,45 @@ func (dct *DatabaseConnectionTester) TestConnectionTimeout() {
 	}
 }
 
-// TestDatabaseSwitching 测试数据库类型切换
-func (dct *DatabaseConnectionTester) TestDatabaseSwitching() {
+// TestPostgreSQLConfiguration 测试PostgreSQL配置
+func (dct *DatabaseConnectionTester) TestPostgreSQLConfiguration() {
 	start := time.Now()
 	
-	// 保存原始环境变量
-	originalDBType := os.Getenv("DB_TYPE")
-	defer os.Setenv("DB_TYPE", originalDBType)
-	
-	// 测试SQLite切换
-	os.Setenv("DB_TYPE", "sqlite")
-	if !config.UseSQLite() || config.UsePostgreSQL() {
-		dct.addResult("Database Switching", "Switch to SQLite configuration", false, time.Since(start), 
-			fmt.Errorf("database type switching failed: expected SQLite"))
+	// 测试数据库类型始终返回PostgreSQL
+	if config.GetDatabaseType() != "postgresql" {
+		dct.addResult("PostgreSQL Configuration", "Verify database type is PostgreSQL", false, time.Since(start), 
+			fmt.Errorf("expected database type 'postgresql', got '%s'", config.GetDatabaseType()))
 		return
 	}
 	
-	// 测试PostgreSQL切换
-	os.Setenv("DB_TYPE", "postgresql")
-	if config.UseSQLite() || !config.UsePostgreSQL() {
-		dct.addResult("Database Switching", "Switch to PostgreSQL configuration", false, time.Since(start), 
-			fmt.Errorf("database type switching failed: expected PostgreSQL"))
+	// 测试连接字符串
+	connStr := config.GetDatabaseConnectionString()
+	if connStr == "" {
+		dct.addResult("PostgreSQL Configuration", "Get database connection string", false, time.Since(start), 
+			fmt.Errorf("database connection string is empty"))
 		return
 	}
 	
-	dct.addResult("Database Switching", "Test database type switching mechanism", true, time.Since(start), nil)
+	dct.addResult("PostgreSQL Configuration", "Test PostgreSQL configuration settings", true, time.Since(start), nil)
 }
 
 // RunAllTests 运行所有连接测试
 func (dct *DatabaseConnectionTester) RunAllTests() {
-	log.Println("Starting database connection tests...")
+	log.Println("Starting PostgreSQL database connection tests...")
 	
-	dct.TestSQLiteConnection()
 	dct.TestPostgreSQLConnection()
 	dct.TestConnectionPooling()
 	dct.TestConnectionTimeout()
-	dct.TestDatabaseSwitching()
+	dct.TestPostgreSQLConfiguration()
 	
-	log.Println("Database connection tests completed.")
+	log.Println("PostgreSQL database connection tests completed.")
 }
 
 // PrintResults 打印测试结果
 func (dct *DatabaseConnectionTester) PrintResults() {
-	fmt.Println("\n" + "="*80)
+	fmt.Println("\n" + strings.Repeat("=", 80))
 	fmt.Println("DATABASE CONNECTION TEST RESULTS")
-	fmt.Println("="*80)
+	fmt.Println(strings.Repeat("=", 80))
 	
 	totalTests := len(dct.results)
 	passedTests := 0
@@ -323,10 +265,10 @@ func (dct *DatabaseConnectionTester) PrintResults() {
 		}
 	}
 	
-	fmt.Println("="*80)
+	fmt.Println(strings.Repeat("=", 80))
 	fmt.Printf("SUMMARY: %d/%d tests passed (%.1f%%)\n", 
 		passedTests, totalTests, float64(passedTests)/float64(totalTests)*100)
-	fmt.Println("="*80)
+	fmt.Println(strings.Repeat("=", 80))
 }
 
 // GetResults 获取测试结果

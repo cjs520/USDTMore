@@ -460,25 +460,7 @@ func GetOutputLog() string {
 	return runPath + "/usdtmore.log"
 }
 
-/*
-数据库路径 (SQLite)
-*/
-func GetDbPath() string {
-	if data := help.GetEnv("DB_DIR"); data != "" {
-		return strings.TrimSpace(data) + "/usdtmore.db"
-	}
-	return runPath + "/usdtmore.db"
-}
 
-/*
-是否使用PostgreSQL数据库
-*/
-func UsePostgreSQL() bool {
-	if data := help.GetEnv("DB_TYPE"); data != "" {
-		return strings.ToLower(strings.TrimSpace(data)) == "postgresql"
-	}
-	return false
-}
 
 /*
 获取PostgreSQL连接DSN
@@ -515,19 +497,9 @@ func getEnvWithDefault(key, defaultValue string) string {
 获取数据库类型
 */
 func GetDatabaseType() string {
-	dbType := strings.ToLower(strings.TrimSpace(help.GetEnv("DB_TYPE")))
-	if dbType == "postgresql" || dbType == "postgres" {
-		return "postgresql"
-	}
-	return "sqlite"
+	return "postgresql"
 }
 
-/*
-是否使用SQLite数据库
-*/
-func UseSQLite() bool {
-	return GetDatabaseType() == "sqlite"
-}
 
 /*
 获取PostgreSQL主机地址
@@ -616,13 +588,10 @@ func GetPostgreSQLFullDSN() string {
 }
 
 /*
-获取数据库连接字符串（根据数据库类型返回相应的连接字符串）
+获取数据库连接字符串
 */
 func GetDatabaseConnectionString() string {
-	if UsePostgreSQL() {
-		return GetPostgreSQLDSN()
-	}
-	return GetDbPath()
+	return GetPostgreSQLDSN()
 }
 
 /*

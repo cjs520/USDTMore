@@ -4,11 +4,8 @@ import (
 	"USDTMore/app/config"
 	"fmt"
 	"log"
-	"os"
-	"path/filepath"
 	"time"
 	
-	"github.com/glebarez/sqlite"
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"
@@ -28,15 +25,10 @@ func Init() error {
 	var db *gorm.DB
 	var err error
 	
-	// 根据配置选择数据库类型
-	if config.UsePostgreSQL() {
-		db, err = initPostgreSQLWithRetry()
-	} else {
-		db, err = initSQLiteWithRetry()
-	}
-	
+	// 初始化PostgreSQL数据库
+	db, err = initPostgreSQLWithRetry()
 	if err != nil {
-		return fmt.Errorf("database initialization failed: %v", err)
+		return fmt.Errorf("PostgreSQL initialization failed: %v", err)
 	}
 	
 	DB = db
@@ -49,7 +41,7 @@ func Init() error {
 	// 添加初始钱包地址
 	addStartWalletAddress()
 
-	log.Printf("Database initialized successfully (type: %s)", config.GetDatabaseType())
+	log.Printf("PostgreSQL database initialized successfully")
 	return nil
 }
 
@@ -86,29 +78,6 @@ func initPostgreSQLWithRetry() (*gorm.DB, error) {
 	return nil, fmt.Errorf("failed to connect to PostgreSQL after %d attempts: %v", maxRetries, err)
 }
 
-// initSQLiteWithRetry 带重试机制的SQLite初始化
-func initSQLiteWithRetry() (*gorm.DB, error) {
-	var db *gorm.DB
-	var err error
-	
-	for i := 0; i < maxRetries; i++ {
-		db, err = initSQLite()
-		if err == nil {
-			return db, nil
-		}
-		
-		if i < maxRetries-1 {
-			delay := time.Duration(i+1) * baseDelay
-			if delay > maxDelay {
-				delay = maxDelay
-			}
-			log.Printf("SQLite connection attempt %d failed: %v. Retrying in %v...", i+1, err, delay)
-			time.Sleep(delay)
-		}
-	}
-	
-	return nil, fmt.Errorf("failed to connect to SQLite after %d attempts: %v", maxRetries, err)
-}
 
 // initPostgreSQL 初始化PostgreSQL连接
 func initPostgreSQL() (*gorm.DB, error) {
@@ -156,60 +125,6 @@ func initPostgreSQL() (*gorm.DB, error) {
 	return db, nil
 }
 
-// initSQLite 初始化SQLite连接
-func initSQLite() (*gorm.DB, error) {
-	dbPath := config.GetDbPath()
-	if dbPath == "" {
-		return nil, fmt.Errorf("SQLite database path is empty")
-	}
-	
-	// 确保数据库文件的目录存在
-	if err := ensureDir(filepath.Dir(dbPath)); err != nil {
-		return nil, fmt.Errorf("failed to create database directory: %v", err)
-	}
-	
-	// 配置GORM日志级别
-	logLevel := logger.Warn
-	if config.GetDbDebug() {
-		logLevel = logger.Info
-	}
-	
-	gormConfig := &gorm.Config{
-		Logger: logger.Default.LogMode(logLevel),
-		NowFunc: func() time.Time {
-			return time.Now().Local()
-		},
-	}
-	
-	db, err := gorm.Open(sqlite.Open(dbPath), gormConfig)
-	if err != nil {
-		return nil, fmt.Errorf("failed to open SQLite connection: %v", err)
-	}
-	
-	// SQLite特定配置
-	sqlDB, err := db.DB()
-	if err != nil {
-		return nil, fmt.Errorf("failed to get underlying sql.DB: %v", err)
-	}
-	
-	// SQLite不需要太多连接，设置较小的值
-	sqlDB.SetMaxIdleConns(1)
-	sqlDB.SetMaxOpenConns(1)
-	sqlDB.SetConnMaxLifetime(0) // 永不过期
-	sqlDB.SetConnMaxIdleTime(0) // 永不过期
-	
-	log.Printf("SQLite database initialized at: %s", dbPath)
-	
-	return db, nil
-}
-
-// ensureDir 确保目录存在
-func ensureDir(dir string) error {
-	if _, err := os.Stat(dir); os.IsNotExist(err) {
-		return os.MkdirAll(dir, 0755)
-	}
-	return nil
-}
 
 // AutoMigrate 执行数据库迁移
 func AutoMigrate() error {

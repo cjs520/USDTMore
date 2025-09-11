@@ -3,18 +3,17 @@ package tests
 import (
 	"USDTMore/app/config"
 	"USDTMore/app/model"
-	"context"
 	"fmt"
 	"log"
 	"math/rand"
 	"os"
+	"strings"
 	"sync"
 	"testing"
 	"time"
 
 	"github.com/glebarez/sqlite"
 	_ "github.com/jackc/pgx/v5/stdlib"
-	"github.com/shopspring/decimal"
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"
@@ -187,13 +186,13 @@ func (dpt *DatabasePerformanceTester) generateTradeOrders(count int) []model.Tra
 		orders[i] = model.TradeOrders{
 			Chain: chains[rand.Intn(len(chains))],
 			Address: fmt.Sprintf("0x%016x%016x", rand.Int63(), rand.Int63()),
-			Amount: decimal.NewFromFloat(amount),
-			RealAmount: decimal.NewFromFloat(amount * (0.98 + rand.Float64()*0.04)),
-			Token: "USDT",
+			Amount: fmt.Sprintf("%.2f", amount),
 			Status: rand.Intn(3),
-			BlockId: fmt.Sprintf("block_%d", rand.Int63()),
-			CallbackStatus: rand.Intn(2),
-			Hash: fmt.Sprintf("hash_%016x", rand.Int63()),
+			TradeHash: fmt.Sprintf("hash_%016x", rand.Int63()),
+			OrderId: fmt.Sprintf("order_%d_%d", i, rand.Int63()),
+			TradeId: fmt.Sprintf("trade_%d_%d", i, rand.Int63()),
+			UsdtRate: "7.20",
+			Money: amount,
 		}
 	}
 	
@@ -565,9 +564,9 @@ func (dpt *DatabasePerformanceTester) RunAllTests() {
 
 // PrintResults 打印性能测试结果
 func (dpt *DatabasePerformanceTester) PrintResults() {
-	fmt.Println("\n" + "="*120)
+	fmt.Println("\n" + strings.Repeat("=", 120))
 	fmt.Println("DATABASE PERFORMANCE TEST RESULTS")
-	fmt.Println("="*120)
+	fmt.Println(strings.Repeat("=", 120))
 	
 	// 按数据库类型分组结果
 	sqliteResults := make([]PerformanceResult, 0)
@@ -584,25 +583,25 @@ func (dpt *DatabasePerformanceTester) PrintResults() {
 	// 打印SQLite结果
 	if len(sqliteResults) > 0 {
 		fmt.Println("\nSQLite Performance:")
-		fmt.Println("-" * 60)
+		fmt.Println(strings.Repeat("-", 60))
 		dpt.printResultGroup(sqliteResults)
 	}
 	
 	// 打印PostgreSQL结果
 	if len(postgresResults) > 0 {
 		fmt.Println("\nPostgreSQL Performance:")
-		fmt.Println("-" * 60)
+		fmt.Println(strings.Repeat("-", 60))
 		dpt.printResultGroup(postgresResults)
 	}
 	
 	// 打印对比
 	if len(sqliteResults) > 0 && len(postgresResults) > 0 {
 		fmt.Println("\nPerformance Comparison (PostgreSQL vs SQLite):")
-		fmt.Println("-" * 80)
+		fmt.Println(strings.Repeat("-", 80))
 		dpt.printComparison(sqliteResults, postgresResults)
 	}
 	
-	fmt.Println("="*120)
+	fmt.Println(strings.Repeat("=", 120))
 }
 
 // printResultGroup 打印结果组

@@ -10,7 +10,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 	"github.com/testcontainers/testcontainers-go"
-	"github.com/testcontainers/testcontainers-go/modules/postgres"
+	postgresModule "github.com/testcontainers/testcontainers-go/modules/postgres"
 	"github.com/testcontainers/testcontainers-go/wait"
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
@@ -22,11 +22,11 @@ var TestDB *gorm.DB
 // SetupTestDB 设置测试数据库容器
 func SetupTestDB(ctx context.Context, t *testing.T) (testcontainers.Container, *gorm.DB) {
 	// 创建PostgreSQL测试容器
-	postgresContainer, err := postgres.RunContainer(ctx,
+	postgresContainer, err := postgresModule.RunContainer(ctx,
 		testcontainers.WithImage("postgres:15-alpine"),
-		postgres.WithDatabase("usdtmore_test"),
-		postgres.WithUsername("test"),
-		postgres.WithPassword("test123"),
+		postgresModule.WithDatabase("usdtmore_test"),
+		postgresModule.WithUsername("test"),
+		postgresModule.WithPassword("test123"),
 		testcontainers.WithWaitStrategy(
 			wait.ForLog("database system is ready to accept connections").
 				WithOccurrence(2).

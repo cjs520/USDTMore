@@ -3,11 +3,10 @@ package tests
 import (
 	"USDTMore/app/config"
 	"USDTMore/app/model"
-	"context"
 	"fmt"
 	"log"
 	"os"
-	"reflect"
+	"strings"
 	"testing"
 	"time"
 
@@ -106,13 +105,15 @@ func (dot *DatabaseOperationsTester) setupDatabase(usePostgreSQL bool) error {
 		return fmt.Errorf("failed to migrate database: %v", err)
 	}
 	
+	// 设置全局DB连接，供模型方法使用
+	model.DB = dot.db
+	
 	log.Printf("Database setup completed for %s", dot.dbType)
 	return nil
 }
 
 // TestWalletAddressOperations 测试钱包地址表的所有操作
 func (dot *DatabaseOperationsTester) TestWalletAddressOperations() {
-	tableName := "wallet_address"
 	
 	// 测试创建操作
 	dot.testWalletCreate()
@@ -421,13 +422,13 @@ func (dot *DatabaseOperationsTester) testOrderCreate() {
 	order := model.TradeOrders{
 		Chain: "TRON",
 		Address: "TRX123456789ABCDEF",
-		Amount: decimal.NewFromFloat(100.50),
-		RealAmount: decimal.NewFromFloat(100.50),
-		Token: "USDT",
+		Amount: "100.50",
 		Status: 1,
-		BlockId: "block123",
-		CallbackStatus: 1,
-		Hash: "hash123456789",
+		TradeHash: "hash123456789",
+		OrderId: "order123",
+		TradeId: "trade123",
+		UsdtRate: "7.20",
+		Money: 100.50,
 	}
 	
 	err := dot.db.Create(&order).Error
@@ -523,9 +524,9 @@ func (dot *DatabaseOperationsTester) testOrderBusinessLogic() {
 	
 	// 创建多个订单来测试业务场景
 	orders := []model.TradeOrders{
-		{Chain: "TRON", Address: "TRX111", Amount: decimal.NewFromFloat(50.0), Token: "USDT", Status: 0},
-		{Chain: "TRON", Address: "TRX111", Amount: decimal.NewFromFloat(100.0), Token: "USDT", Status: 1},
-		{Chain: "POLY", Address: "0x111", Amount: decimal.NewFromFloat(200.0), Token: "USDT", Status: 1},
+		{Chain: "TRON", Address: "TRX111", Amount: "50.0", OrderId: "order1", TradeId: "trade1", UsdtRate: "7.20", Money: 50.0, Status: 0},
+		{Chain: "TRON", Address: "TRX111", Amount: "100.0", OrderId: "order2", TradeId: "trade2", UsdtRate: "7.20", Money: 100.0, Status: 1},
+		{Chain: "POLY", Address: "0x111", Amount: "200.0", OrderId: "order3", TradeId: "trade3", UsdtRate: "7.20", Money: 200.0, Status: 1},
 	}
 	
 	err := dot.db.CreateInBatches(orders, 10).Error
@@ -633,13 +634,7 @@ func (dot *DatabaseOperationsTester) testNotifyCreate() {
 	start := time.Now()
 	
 	notify := model.NotifyRecord{
-		OrderId: "order123",
-		Chain: "TRON",
-		Address: "TRX123456789ABCDEF",
-		Hash: "hash123456789",
-		Amount: decimal.NewFromFloat(100.50),
-		Status: 1,
-		TryCount: 1,
+		Txid: "hash123456789",
 	}
 	
 	err := dot.db.Create(&notify).Error
@@ -689,9 +684,8 @@ func (dot *DatabaseOperationsTester) testNotifyUpdate() {
 		return
 	}
 	
-	// 更新重试次数
-	newTryCount := notify.TryCount + 1
-	err := dot.db.Model(&notify).Update("try_count", newTryCount).Error
+	// 简化测试 - 只测试更新操作
+	err := dot.db.Model(&notify).Update("updated_at", time.Now()).Error
 	duration := time.Since(start)
 	
 	if err != nil {
@@ -707,9 +701,9 @@ func (dot *DatabaseOperationsTester) testNotifyRetryLogic() {
 	
 	// 创建失败的通知记录
 	retryNotifications := []model.NotifyRecord{
-		{OrderId: "retry1", Chain: "TRON", Address: "TRX_RETRY1", Hash: "hash_retry1", Amount: decimal.NewFromFloat(50.0), Status: 0, TryCount: 1},
-		{OrderId: "retry2", Chain: "TRON", Address: "TRX_RETRY2", Hash: "hash_retry2", Amount: decimal.NewFromFloat(75.0), Status: 0, TryCount: 2},
-		{OrderId: "retry3", Chain: "TRON", Address: "TRX_RETRY3", Hash: "hash_retry3", Amount: decimal.NewFromFloat(100.0), Status: 0, TryCount: 5},
+		{Txid: "hash_retry1"},
+		{Txid: "hash_retry2"},
+		{Txid: "hash_retry3"},
 	}
 	
 	err := dot.db.CreateInBatches(retryNotifications, 10).Error
@@ -779,7 +773,7 @@ func (dot *DatabaseOperationsTester) TestTransactionOperations() {
 		}
 		
 		order := model.TradeOrders{
-			Chain: "TX_TEST", Address: "TX_ADDRESS", Amount: decimal.NewFromFloat(100.0), Token: "USDT", Status: 1,
+			Chain: "TX_TEST", Address: "TX_ADDRESS", Amount: "100.0", OrderId: "order_tx", TradeId: "trade_tx", UsdtRate: "7.20", Money: 100.0, Status: 1,
 		}
 		if err := tx.Create(&order).Error; err != nil {
 			return err
@@ -868,7 +862,7 @@ func (dot *DatabaseOperationsTester) TestModelMethods() {
 	
 	// 测试 GetOtherNotify 函数
 	start = time.Now()
-	notify := model.GetOtherNotify("METHOD_TEST", "METHOD_ADDRESS")
+	_ = model.GetOtherNotify("METHOD_TEST", "METHOD_ADDRESS")
 	duration = time.Since(start)
 	
 	// 这个测试总是成功，因为函数有默认返回值
@@ -913,9 +907,9 @@ func (dot *DatabaseOperationsTester) RunAllTests(usePostgreSQL bool) {
 
 // PrintResults 打印测试结果
 func (dot *DatabaseOperationsTester) PrintResults() {
-	fmt.Println("\n" + "="*130)
+	fmt.Println("\n" + strings.Repeat("=", 130))
 	fmt.Printf("DATABASE OPERATIONS TEST RESULTS (%s)\n", dot.dbType)
-	fmt.Println("="*130)
+	fmt.Println(strings.Repeat("=", 130))
 	
 	// 按表分组结果
 	tableResults := make(map[string][]OperationResult)
@@ -925,7 +919,7 @@ func (dot *DatabaseOperationsTester) PrintResults() {
 	
 	for tableName, results := range tableResults {
 		fmt.Printf("\nTable: %s\n", tableName)
-		fmt.Println("-" * 90)
+		fmt.Println(strings.Repeat("-", 90))
 		fmt.Printf("%-20s | %-10s | %-8s | %8s | %8s | %s\n", 
 			"Test", "Operation", "Success", "Duration", "Records", "Description")
 		fmt.Println(strings.Repeat("-", 90))
@@ -960,10 +954,10 @@ func (dot *DatabaseOperationsTester) PrintResults() {
 		}
 	}
 	
-	fmt.Println("="*130)
+	fmt.Println(strings.Repeat("=", 130))
 	fmt.Printf("SUMMARY (%s): %d/%d tests passed (%.1f%%)\n", 
 		dot.dbType, passedTests, totalTests, float64(passedTests)/float64(totalTests)*100)
-	fmt.Println("="*130)
+	fmt.Println(strings.Repeat("=", 130))
 }
 
 // GetResults 获取测试结果

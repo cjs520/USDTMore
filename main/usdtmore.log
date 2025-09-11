@@ -1,0 +1,6 @@
+[33mWARN[0m[2025-09-11 18:04:24] TG_BOT_TOKEN未配置，Telegram Bot功能将不可用           
+[31mERRO[0m[2025-09-11 18:04:24] 请配置参数 TG_BOT_TOKEN 和 TG_BOT_ADMIN_ID         
+[33mWARN[0m[2025-09-11 18:04:41] TG_BOT_TOKEN未配置，Telegram Bot功能将不可用           
+[31mERRO[0m[2025-09-11 18:04:41] 数据库初始化失败： database migration failed: auto migration failed: ERROR: syntax error at or near "(" (SQLSTATE 42601) 
+[33mWARN[0m[2025-09-11 18:05:06] TG_BOT_TOKEN未配置，Telegram Bot功能将不可用           
+[31mERRO[0m[2025-09-11 18:05:06] 请配置参数 TG_BOT_TOKEN 和 TG_BOT_ADMIN_ID         

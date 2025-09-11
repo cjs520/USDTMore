@@ -1,0 +1,148 @@
+# USDTMore Production Docker Compose Configuration
+# PostgreSQL as the primary and only database option
+# Optimized for production deployment with health checks and monitoring
+
+services:
+  # PostgreSQL Database (Primary and Only Database)
+  postgres:
+    image: postgres:15-alpine
+    container_name: usdtmore_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: usdtmore
+      POSTGRES_USER: usdtmore_user
+      POSTGRES_PASSWORD: your_secure_password_here
+      POSTGRES_INITDB_ARGS: "--encoding=UTF-8 --lc-collate=C --lc-ctype=C"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./config/postgresql.conf:/etc/postgresql/postgresql.conf:ro
+      - ./config/pg_hba.conf:/etc/postgresql/pg_hba.conf:ro
+    ports:
+      - "5432:5432"
+    command: ["postgres", "-c", "config_file=/etc/postgresql/postgresql.conf"]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U usdtmore_user -d usdtmore"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    networks:
+      - usdtmore_network
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "50m"
+        max-file: "3"
+
+  # USDTMore Application
+  usdtmore:
+    image: zxzx412/usdtmore:latest
+    container_name: usdtmore_app
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports:
+      - "6080:6080"
+    environment:
+      # ===== Database Configuration (PostgreSQL Only) =====
+      DB_TYPE: "postgresql"
+      DB_HOST: "postgres"
+      DB_PORT: "5432"
+      DB_USER: "usdtmore_user"
+      DB_PASSWORD: "your_secure_password_here"
+      DB_NAME: "usdtmore"
+      DB_SSLMODE: "disable"
+      DB_TIMEZONE: "UTC"
+      
+      # ===== Database Connection Pool Configuration =====
+      DB_MAX_IDLE_CONNS: "10"               # Maximum idle connections
+      DB_MAX_OPEN_CONNS: "100"              # Maximum open connections
+      DB_CONN_MAX_LIFETIME: "5m"            # Connection maximum lifetime
+      DB_CONN_MAX_IDLE_TIME: "1m"           # Connection maximum idle time
+      
+      # ===== Required Configuration =====
+      TG_BOT_TOKEN: "your_bot_token_here"
+      TG_BOT_ADMIN_ID: "your_admin_id_here"
+      
+      # ===== API Keys (Required) =====
+      ETHERSCAN_API_KEY: "your_etherscan_api_key"
+      TRON_SCAN_API_KEY: "your_tron_scan_api_key"
+      SOLANA_API_KEY: "your_solana_api_key"
+      
+      # ===== Application Configuration =====
+      AUTH_TOKEN: "your_auth_token"
+      APP_URI: "https://your-domain.com"
+      REWRITE_HTTPS: "true"
+      
+      # ===== Network Configuration =====
+      TRON_SERVER_API: "TRON_SCAN"
+      ETH_CONFIRMATION: "0"
+      TRADE_IS_CONFIRMED: "0"
+      
+      # ===== Payment Configuration =====
+      PAYMENT_AMOUNT_RANGE: "0.01,99999"
+      EXPIRE_TIME: "1800"
+      
+      # ===== Optional Configuration =====
+      WALLET_ADDRESS: "TRON:your_tron_address,BSC:your_bsc_address"
+      TG_BOT_GROUP_ID: "your_group_id"
+      
+      # ===== Logging Configuration =====
+      LOG_LEVEL: "INFO"
+      LOG_DIR: "/app/logs"
+    volumes:
+      - usdtmore_logs:/app/logs
+      - usdtmore_data:/app/data
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:6080/ || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    networks:
+      - usdtmore_network
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "100m"
+        max-file: "5"
+
+  # Redis Cache (Optional, for high performance)
+  redis:
+    image: redis:7-alpine
+    container_name: usdtmore_redis
+    restart: unless-stopped
+    command: >
+      redis-server
+      --appendonly yes
+      --maxmemory 512mb
+      --maxmemory-policy allkeys-lru
+      --tcp-keepalive 60
+      --timeout 300
+    volumes:
+      - redis_data:/data
+    ports:
+      - "6379:6379"
+    networks:
+      - usdtmore_network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+      start_period: 10s
+
+volumes:
+  postgres_data:
+    driver: local
+  redis_data:
+    driver: local
+  usdtmore_logs:
+    driver: local
+  usdtmore_data:
+    driver: local
+
+networks:
+  usdtmore_network:
+    driver: bridge

@@ -33,11 +33,12 @@ COPY --from=builder /go/release/usdtmore /runtime/usdtmore
 ADD ./templates /runtime/templates
 ADD ./static /runtime/static
 
-# Install runtime dependencies
+# Install runtime dependencies for PostgreSQL deployment
 RUN apt-get update && apt-get install -y --no-install-recommends \
         tzdata \
         ca-certificates \
         curl \
+        postgresql-client \
     && ln -fs /usr/share/zoneinfo/Asia/Shanghai /etc/localtime \
     && dpkg-reconfigure -f noninteractive tzdata \
     && apt-get clean \

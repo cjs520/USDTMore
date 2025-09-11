@@ -1,0 +1,51 @@
+FROM golang:1.23-alpine AS builder
+
+ENV GO111MODULE=on
+ENV CGO_ENABLED=0
+WORKDIR /go/release
+
+# Copy source code
+COPY . .
+
+# Build application
+RUN go build -trimpath -ldflags="-s -w -buildid=" -o usdtmore ./main
+
+FROM alpine:latest
+
+ENV TZ=Asia/Shanghai
+ENV HTML_DIR=/runtime
+
+# Copy the built binary from builder stage
+COPY --from=builder /go/release/usdtmore /runtime/usdtmore
+
+ADD ./templates /runtime/templates
+ADD ./static /runtime/static
+
+# Install runtime dependencies for PostgreSQL deployment
+RUN apk add --no-cache \
+        tzdata \
+        ca-certificates \
+        curl \
+        postgresql-client \
+    && ln -sf /usr/share/zoneinfo/Asia/Shanghai /etc/localtime \
+    && echo "Asia/Shanghai" > /etc/timezone
+
+# Create non-root user for security
+RUN addgroup -g 1000 -S usdtmore && adduser -u 1000 -S usdtmore -G usdtmore \
+    && chown -R usdtmore:usdtmore /runtime
+
+# Switch to non-root user
+USER usdtmore
+
+# Set working directory
+WORKDIR /runtime
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
+    CMD curl -f http://localhost:6080/ || exit 1
+
+# Expose port
+EXPOSE 6080
+
+# Start application
+CMD ["./usdtmore"]
