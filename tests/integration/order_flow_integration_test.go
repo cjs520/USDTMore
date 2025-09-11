@@ -1,7 +1,6 @@
 package integration_test
 
 import (
-	"USDTMore/app/config"
 	"USDTMore/app/model"
 	"USDTMore/app/web"
 	"USDTMore/tests/testutils"

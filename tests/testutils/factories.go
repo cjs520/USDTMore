@@ -3,6 +3,7 @@ package testutils
 import (
 	"USDTMore/app/model"
 	"fmt"
+	"math/rand"
 	"time"
 
 	"github.com/google/uuid"
@@ -169,3 +170,351 @@ func CreateFailedNotifyOrder() *model.TradeOrders {
 		"trade_hash":   "0x123456789abcdef",
 	})
 }
+
+// CreateOrderBatch 批量创建测试订单
+func CreateOrderBatch(count int, customFields ...map[string]interface{}) []*model.TradeOrders {
+	orders := make([]*model.TradeOrders, count)
+	baseFields := make(map[string]interface{})
+	
+	if len(customFields) > 0 {
+		baseFields = customFields[0]
+	}
+	
+	for i := 0; i < count; i++ {
+		// 为每个订单创建独立的字段副本
+		fields := make(map[string]interface{})
+		for k, v := range baseFields {
+			fields[k] = v
+		}
+		
+		// 确保每个订单有唯一的ID
+		if _, exists := fields["order_id"]; !exists {
+			fields["order_id"] = fmt.Sprintf("BATCH_%d_%s", i, uuid.New().String()[:8])
+		}
+		if _, exists := fields["trade_id"]; !exists {
+			fields["trade_id"] = fmt.Sprintf("TID_%d_%s", i, uuid.New().String()[:8])
+		}
+		
+		orders[i] = CreateTestOrder(fields)
+	}
+	
+	return orders
+}
+
+// CreateMultiChainOrders 创建多链测试订单
+func CreateMultiChainOrders() []*model.TradeOrders {
+	chains := []string{"TRON", "BSC", "POLY", "OP"}
+	addresses := map[string]string{
+		"TRON": "TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t",
+		"BSC":  "0x55d398326f99059ff775485246999027b3197955",
+		"POLY": "0xc2132D05D31c914a87C6611C10748AEb04B58e8F",
+		"OP":   "0x94b008aA00579c1307B0EF2c499aD98a8ce58e58",
+	}
+	
+	orders := make([]*model.TradeOrders, len(chains))
+	
+	for i, chain := range chains {
+		orders[i] = CreateTestOrder(map[string]interface{}{
+			"chain":   chain,
+			"address": addresses[chain],
+		})
+	}
+	
+	return orders
+}
+
+// CreateOrderWithRandomAmount 创建随机金额的测试订单
+func CreateOrderWithRandomAmount(minAmount, maxAmount float64) *model.TradeOrders {
+	amount := minAmount + rand.Float64()*(maxAmount-minAmount)
+	rate := 7.0 + rand.Float64()*2.0 // 7.0-9.0 的汇率
+	usdtAmount := amount / rate
+	
+	return CreateTestOrder(map[string]interface{}{
+		"money":  amount,
+		"amount": fmt.Sprintf("%.2f", usdtAmount),
+	})
+}
+
+// CreateConcurrentTestOrders 创建并发测试用的订单
+func CreateConcurrentTestOrders(count int, baseAmount float64) []*model.TradeOrders {
+	orders := make([]*model.TradeOrders, count)
+	chains := []string{"TRON", "BSC", "POLY", "OP"}
+	
+	for i := 0; i < count; i++ {
+		chain := chains[i%len(chains)]
+		amount := baseAmount + float64(i)*0.01 // 每个订单金额略有不同，避免金额冲突
+		
+		orders[i] = CreateTestOrder(map[string]interface{}{
+			"chain": chain,
+			"money": amount,
+			"order_id": fmt.Sprintf("CONCURRENT_%d_%d", i, time.Now().UnixNano()),
+			"trade_id": fmt.Sprintf("TID_%d_%d", i, time.Now().UnixNano()),
+		})
+		
+		// 微小延迟确保时间戳不同
+		time.Sleep(time.Nanosecond)
+	}
+	
+	return orders
+}
+
+// CreateOrderLifecycleTest 创建订单生命周期测试数据
+func CreateOrderLifecycleTest() *OrderLifecycleTestData {
+	baseOrder := CreateTestOrder()
+	
+	return &OrderLifecycleTestData{
+		OrderData:     baseOrder,
+		PaymentAmount: "100.00",
+		TxHash:        GenerateTransactionHash(ChainTRON),
+		FromAddress:   GenerateRandomAddress(ChainTRON),
+		Chain:         baseOrder.Chain,
+		ExpectedCallbacks: []string{baseOrder.NotifyUrl},
+	}
+}
+
+// OrderLifecycleTestData 订单生命周期测试数据
+type OrderLifecycleTestData struct {
+	OrderData         *model.TradeOrders
+	PaymentAmount     string
+	TxHash            string
+	FromAddress       string
+	Chain             string
+	ExpectedCallbacks []string
+}
+
+// CreateNotifyRecord 创建通知记录
+func CreateNotifyRecord(txid string) *model.NotifyRecord {
+	return &model.NotifyRecord{
+		Txid:      txid,
+		CreatedAt: time.Now(),
+		UpdatedAt: time.Now(),
+	}
+}
+
+// CreateFailedNotifyRecord 创建失败的通知记录
+func CreateFailedNotifyRecord(txid string) *model.NotifyRecord {
+	return &model.NotifyRecord{
+		Txid:      txid,
+		CreatedAt: time.Now(),
+		UpdatedAt: time.Now(),
+	}
+}
+
+// CreateStressTestOrders 创建压力测试订单
+func CreateStressTestOrders(orderCount, batchSize int) [][]*model.TradeOrders {
+	totalBatches := (orderCount + batchSize - 1) / batchSize
+	batches := make([][]*model.TradeOrders, totalBatches)
+	
+	for i := 0; i < totalBatches; i++ {
+		currentBatchSize := batchSize
+		if i == totalBatches-1 {
+			// 最后一批可能数量不足
+			currentBatchSize = orderCount - i*batchSize
+		}
+		
+		batches[i] = CreateConcurrentTestOrders(currentBatchSize, 100.0)
+	}
+	
+	return batches
+}
+
+// CreateAPITestData 创建API测试数据
+type APITestData struct {
+	CreateOrderRequest map[string]interface{}
+	ExpectedResponse   map[string]interface{}
+	InvalidRequests    []map[string]interface{}
+}
+
+// CreateOrderAPITestData 创建订单API测试数据
+func CreateOrderAPITestData() *APITestData {
+	validRequest := map[string]interface{}{
+		"order_id":     fmt.Sprintf("API_TEST_%s", uuid.New().String()[:8]),
+		"amount":       100.0,
+		"code":         "TRON",
+		"notify_url":   "https://example.com/notify",
+		"redirect_url": "https://example.com/return",
+	}
+	
+	expectedResponse := map[string]interface{}{
+		"code": 200,
+		"msg":  "success",
+		"data": map[string]interface{}{
+			"trade_id":        "",  // 动态生成
+			"order_id":        validRequest["order_id"],
+			"amount":          validRequest["amount"],
+			"actual_amount":   "", // 动态计算
+			"token":           "", // 动态分配
+			"expiration_time": 0,  // 动态计算
+			"payment_url":     "", // 动态生成
+		},
+	}
+	
+	invalidRequests := []map[string]interface{}{
+		// 缺少必要参数
+		{"order_id": "TEST001", "amount": 100.0},
+		// 金额无效
+		{"order_id": "TEST002", "amount": -100.0, "code": "TRON", "notify_url": "https://example.com/notify", "redirect_url": "https://example.com/return"},
+		// 订单ID重复
+		{"order_id": "DUPLICATE", "amount": 100.0, "code": "TRON", "notify_url": "https://example.com/notify", "redirect_url": "https://example.com/return"},
+		// 无效的链类型
+		{"order_id": "TEST003", "amount": 100.0, "code": "INVALID_CHAIN", "notify_url": "https://example.com/notify", "redirect_url": "https://example.com/return"},
+		// 无效的URL格式
+		{"order_id": "TEST004", "amount": 100.0, "code": "TRON", "notify_url": "invalid-url", "redirect_url": "https://example.com/return"},
+	}
+	
+	return &APITestData{
+		CreateOrderRequest: validRequest,
+		ExpectedResponse:   expectedResponse,
+		InvalidRequests:    invalidRequests,
+	}
+}
+
+// CreatePerformanceTestData 创建性能测试数据
+type PerformanceTestData struct {
+	OrderBatches     [][]*model.TradeOrders
+	ConcurrentUsers  int
+	RequestsPerUser  int
+	TestDuration     time.Duration
+	ExpectedTPS      int
+}
+
+// CreatePerformanceScenario 创建性能测试场景
+func CreatePerformanceScenario(scenario string) *PerformanceTestData {
+	switch scenario {
+	case "light":
+		return &PerformanceTestData{
+			OrderBatches:    CreateStressTestOrders(100, 10),
+			ConcurrentUsers: 5,
+			RequestsPerUser: 20,
+			TestDuration:    time.Minute * 1,
+			ExpectedTPS:     10,
+		}
+	case "moderate":
+		return &PerformanceTestData{
+			OrderBatches:    CreateStressTestOrders(500, 25),
+			ConcurrentUsers: 20,
+			RequestsPerUser: 25,
+			TestDuration:    time.Minute * 3,
+			ExpectedTPS:     50,
+		}
+	case "heavy":
+		return &PerformanceTestData{
+			OrderBatches:    CreateStressTestOrders(1000, 50),
+			ConcurrentUsers: 50,
+			RequestsPerUser: 20,
+			TestDuration:    time.Minute * 5,
+			ExpectedTPS:     100,
+		}
+	default:
+		return CreatePerformanceScenario("light")
+	}
+}
+
+// CreateDataConsistencyTestSuite 创建数据一致性测试套件
+type DataConsistencyTestSuite struct {
+	BaseOrders          []*model.TradeOrders
+	ConcurrentUpdates   []OrderUpdateOperation
+	ExpectedFinalStates []OrderExpectedState
+}
+
+// OrderUpdateOperation 订单更新操作
+type OrderUpdateOperation struct {
+	OrderID   string
+	Operation string // "pay", "expire", "callback", "cancel"
+	Data      map[string]interface{}
+	Delay     time.Duration
+}
+
+// OrderExpectedState 订单预期状态
+type OrderExpectedState struct {
+	OrderID         string
+	ExpectedStatus  int
+	ExpectedCallbacks int
+	ShouldHaveTxHash bool
+}
+
+// CreateDataConsistencyTestSuite 创建数据一致性测试套件
+func CreateDataConsistencyTests() *DataConsistencyTestSuite {
+	baseOrders := CreateOrderBatch(10)
+	
+	operations := make([]OrderUpdateOperation, 0)
+	expectedStates := make([]OrderExpectedState, 0)
+	
+	for i, order := range baseOrders {
+		switch i % 4 {
+		case 0: // 正常支付
+			operations = append(operations, OrderUpdateOperation{
+				OrderID:   order.OrderId,
+				Operation: "pay",
+				Data: map[string]interface{}{
+					"tx_hash":      GenerateTransactionHash(ChainTRON),
+					"from_address": GenerateRandomAddress(ChainTRON),
+				},
+				Delay: time.Duration(i) * time.Millisecond * 100,
+			})
+			expectedStates = append(expectedStates, OrderExpectedState{
+				OrderID:           order.OrderId,
+				ExpectedStatus:    model.OrderStatusSuccess,
+				ExpectedCallbacks: 1,
+				ShouldHaveTxHash:  true,
+			})
+			
+		case 1: // 订单过期
+			operations = append(operations, OrderUpdateOperation{
+				OrderID:   order.OrderId,
+				Operation: "expire",
+				Data:      map[string]interface{}{},
+				Delay:     time.Duration(i) * time.Millisecond * 50,
+			})
+			expectedStates = append(expectedStates, OrderExpectedState{
+				OrderID:           order.OrderId,
+				ExpectedStatus:    model.OrderStatusExpired,
+				ExpectedCallbacks: 0,
+				ShouldHaveTxHash:  false,
+			})
+			
+		case 2: // 并发支付尝试
+			operations = append(operations, 
+				OrderUpdateOperation{
+					OrderID:   order.OrderId,
+					Operation: "pay",
+					Data: map[string]interface{}{
+						"tx_hash":      GenerateTransactionHash(ChainTRON),
+						"from_address": GenerateRandomAddress(ChainTRON),
+					},
+					Delay: time.Duration(i) * time.Millisecond * 10,
+				},
+				OrderUpdateOperation{
+					OrderID:   order.OrderId,
+					Operation: "pay",
+					Data: map[string]interface{}{
+						"tx_hash":      GenerateTransactionHash(ChainTRON),
+						"from_address": GenerateRandomAddress(ChainTRON),
+					},
+					Delay: time.Duration(i) * time.Millisecond * 15, // 稍后执行
+				},
+			)
+			expectedStates = append(expectedStates, OrderExpectedState{
+				OrderID:           order.OrderId,
+				ExpectedStatus:    model.OrderStatusSuccess,
+				ExpectedCallbacks: 1, // 只应该有一次成功回调
+				ShouldHaveTxHash:  true,
+			})
+			
+		case 3: // 等待支付（无操作）
+			expectedStates = append(expectedStates, OrderExpectedState{
+				OrderID:           order.OrderId,
+				ExpectedStatus:    model.OrderStatusWaiting,
+				ExpectedCallbacks: 0,
+				ShouldHaveTxHash:  false,
+			})
+		}
+	}
+	
+	return &DataConsistencyTestSuite{
+		BaseOrders:          baseOrders,
+		ConcurrentUpdates:   operations,
+		ExpectedFinalStates: expectedStates,
+	}
+}
+
