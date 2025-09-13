@@ -699,10 +699,10 @@ func TestDatabasePerformance(t *testing.T) {
 	}
 }
 
-// 独立运行的main函数
-func main() {
-	rand.Seed(time.Now().UnixNano())
-	tester := NewDatabasePerformanceTester()
-	tester.RunAllTests()
-	tester.PrintResults()
-}
+// 独立运行的main函数 - commented out to avoid duplicate main
+// func main() {
+// 	rand.Seed(time.Now().UnixNano())
+// 	tester := NewDatabasePerformanceTester()
+// 	tester.RunAllTests()
+// 	tester.PrintResults()
+// }

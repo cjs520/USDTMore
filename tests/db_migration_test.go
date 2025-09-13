@@ -3,17 +3,15 @@ package tests
 import (
 	"USDTMore/app/config"
 	"USDTMore/app/model"
-	"database/sql"
 	"fmt"
 	"log"
 	"os"
-	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/glebarez/sqlite"
 	_ "github.com/jackc/pgx/v5/stdlib"
-	"github.com/shopspring/decimal"
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"
@@ -117,16 +115,20 @@ func (dmt *DatabaseMigrationTester) insertTestData() error {
 	// 插入交易订单测试数据
 	tradeOrders := []model.TradeOrders{
 		{
+			OrderId: "order001", TradeId: "trade001",
 			Chain: "TRON", Address: "TRX123456789ABCDEF",
-			Amount: decimal.NewFromFloat(100.50), RealAmount: decimal.NewFromFloat(100.50),
-			Token: "USDT", Status: 1, BlockId: "block123",
-			CallbackStatus: 1, Hash: "hash123456789",
+			Amount: "100.50", Money: 100.50,
+			UsdtRate: "1.0", Status: 1,
+			TradeHash: "hash123456789",
+			ExpiredAt: time.Now().Add(time.Hour),
 		},
 		{
+			OrderId: "order002", TradeId: "trade002",
 			Chain: "POLY", Address: "0x123456789ABCDEF",
-			Amount: decimal.NewFromFloat(200.75), RealAmount: decimal.NewFromFloat(200.75),
-			Token: "USDT", Status: 2, BlockId: "block456",
-			CallbackStatus: 0, Hash: "hash987654321",
+			Amount: "200.75", Money: 200.75,
+			UsdtRate: "1.0", Status: 2,
+			TradeHash: "hash987654321",
+			ExpiredAt: time.Now().Add(time.Hour),
 		},
 	}
 	
@@ -139,14 +141,10 @@ func (dmt *DatabaseMigrationTester) insertTestData() error {
 	// 插入通知记录测试数据
 	notifyRecords := []model.NotifyRecord{
 		{
-			OrderId: "order123", Chain: "TRON", Address: "TRX123456789ABCDEF",
-			Hash: "hash123456789", Amount: decimal.NewFromFloat(100.50),
-			Status: 1, TryCount: 1,
+			Txid: "hash123456789",
 		},
 		{
-			OrderId: "order456", Chain: "POLY", Address: "0x123456789ABCDEF",
-			Hash: "hash987654321", Amount: decimal.NewFromFloat(200.75),
-			Status: 0, TryCount: 3,
+			Txid: "hash987654321",
 		},
 	}
 	
@@ -355,7 +353,7 @@ func (dmt *DatabaseMigrationTester) TestDataMigration() {
 	}
 	
 	for _, notification := range notifications {
-		notification.Id = 0 // 重置ID让PostgreSQL自动生成
+		// notification.Id = 0 // NotifyRecord doesn't have Id field
 		if err := dmt.postgresDB.Create(&notification).Error; err != nil {
 			dmt.addResult("Data Migration", "Migrate notify records to PostgreSQL", false, time.Since(start), err, len(notifications), false)
 			return
@@ -387,7 +385,7 @@ func (dmt *DatabaseMigrationTester) TestDataConsistency() {
 	}
 	
 	totalMatches := 0
-	totalTables := len(tables)
+	_ = len(tables) // totalTables
 	
 	for _, table := range tables {
 		var sqliteCount, postgresCount int64
@@ -518,9 +516,9 @@ func (dmt *DatabaseMigrationTester) RunAllTests() {
 
 // PrintResults 打印测试结果
 func (dmt *DatabaseMigrationTester) PrintResults() {
-	fmt.Println("\n" + "="*90)
+	fmt.Println("\n" + strings.Repeat("=", 90))
 	fmt.Println("DATABASE MIGRATION TEST RESULTS")
-	fmt.Println("="*90)
+	fmt.Println(strings.Repeat("=", 90))
 	
 	totalTests := len(dmt.results)
 	passedTests := 0
@@ -549,10 +547,10 @@ func (dmt *DatabaseMigrationTester) PrintResults() {
 		}
 	}
 	
-	fmt.Println("="*90)
+	fmt.Println(strings.Repeat("=", 90))
 	fmt.Printf("SUMMARY: %d/%d tests passed (%.1f%%)\n", 
 		passedTests, totalTests, float64(passedTests)/float64(totalTests)*100)
-	fmt.Println("="*90)
+	fmt.Println(strings.Repeat("=", 90))
 }
 
 // GetResults 获取测试结果

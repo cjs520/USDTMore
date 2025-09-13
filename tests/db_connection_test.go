@@ -291,9 +291,9 @@ func TestDatabaseConnections(t *testing.T) {
 	tester.PrintResults()
 }
 
-// 独立运行的main函数
-func main() {
-	tester := NewDatabaseConnectionTester()
-	tester.RunAllTests()
-	tester.PrintResults()
-}
+// 独立运行的main函数 - commented out to avoid duplicate main
+// func main() {
+// 	tester := NewDatabaseConnectionTester()
+// 	tester.RunAllTests()
+// 	tester.PrintResults()
+// }

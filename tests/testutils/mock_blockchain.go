@@ -9,15 +9,7 @@ import (
 	"github.com/shopspring/decimal"
 )
 
-// ChainType 区块链类型
-type ChainType string
-
-const (
-	ChainTRON    ChainType = "TRON"
-	ChainBSC     ChainType = "BSC"
-	ChainPolygon ChainType = "POLY"
-	ChainOptimism ChainType = "OP"
-)
+// ChainType 区块链类型 (using string constants from factories.go)
 
 // MockTransaction 模拟区块链交易数据
 type MockTransaction struct {
@@ -25,7 +17,7 @@ type MockTransaction struct {
 	From        string          `json:"from"`
 	To          string          `json:"to"`
 	Amount      decimal.Decimal `json:"amount"`
-	Chain       ChainType       `json:"chain"`
+	Chain       string          `json:"chain"`
 	Timestamp   time.Time       `json:"timestamp"`
 	BlockHeight int64           `json:"block_height"`
 	Status      string          `json:"status"` // "success", "pending", "failed"
@@ -36,24 +28,24 @@ type MockTransaction struct {
 // MockBlockchainData 区块链数据生成器
 type MockBlockchainData struct {
 	transactions []MockTransaction
-	addresses    map[ChainType][]string
+	addresses    map[string][]string
 }
 
 // NewMockBlockchainData 创建新的区块链数据生成器
 func NewMockBlockchainData() *MockBlockchainData {
 	return &MockBlockchainData{
 		transactions: make([]MockTransaction, 0),
-		addresses: map[ChainType][]string{
+		addresses: map[string][]string{
 			ChainTRON:     generateTRONAddresses(10),
 			ChainBSC:      generateBSCAddresses(10),
-			ChainPolygon:  generatePolygonAddresses(10),
-			ChainOptimism: generateOptimismAddresses(10),
+			ChainPOLY:  generatePolygonAddresses(10),
+			ChainOP:    generateOptimismAddresses(10),
 		},
 	}
 }
 
 // GenerateTransaction 生成模拟交易数据
-func (m *MockBlockchainData) GenerateTransaction(chain ChainType, to string, amount decimal.Decimal) MockTransaction {
+func (m *MockBlockchainData) GenerateTransaction(chain string, to string, amount decimal.Decimal) MockTransaction {
 	tx := MockTransaction{
 		Hash:        GenerateTransactionHash(chain),
 		From:        m.getRandomAddress(chain),
@@ -72,7 +64,7 @@ func (m *MockBlockchainData) GenerateTransaction(chain ChainType, to string, amo
 }
 
 // GeneratePendingTransaction 生成待确认的交易
-func (m *MockBlockchainData) GeneratePendingTransaction(chain ChainType, to string, amount decimal.Decimal) MockTransaction {
+func (m *MockBlockchainData) GeneratePendingTransaction(chain string, to string, amount decimal.Decimal) MockTransaction {
 	tx := m.GenerateTransaction(chain, to, amount)
 	tx.Status = "pending"
 	tx.BlockHeight = 0 // 待确认交易没有区块高度
@@ -80,7 +72,7 @@ func (m *MockBlockchainData) GeneratePendingTransaction(chain ChainType, to stri
 }
 
 // GenerateFailedTransaction 生成失败的交易
-func (m *MockBlockchainData) GenerateFailedTransaction(chain ChainType, to string, amount decimal.Decimal) MockTransaction {
+func (m *MockBlockchainData) GenerateFailedTransaction(chain string, to string, amount decimal.Decimal) MockTransaction {
 	tx := m.GenerateTransaction(chain, to, amount)
 	tx.Status = "failed"
 	return tx
@@ -110,7 +102,7 @@ func (m *MockBlockchainData) GetTransactionByHash(hash string) (MockTransaction,
 }
 
 // GetTransactionsByAddress 获取地址的所有交易
-func (m *MockBlockchainData) GetTransactionsByAddress(address string, chain ChainType) []MockTransaction {
+func (m *MockBlockchainData) GetTransactionsByAddress(address string, chain string) []MockTransaction {
 	var result []MockTransaction
 	for _, tx := range m.transactions {
 		if (tx.From == address || tx.To == address) && tx.Chain == chain {
@@ -121,7 +113,7 @@ func (m *MockBlockchainData) GetTransactionsByAddress(address string, chain Chai
 }
 
 // GetRandomAddress 获取随机地址
-func (m *MockBlockchainData) getRandomAddress(chain ChainType) string {
+func (m *MockBlockchainData) getRandomAddress(chain string) string {
 	addresses := m.addresses[chain]
 	if len(addresses) == 0 {
 		return GenerateRandomAddress(chain)
@@ -132,7 +124,7 @@ func (m *MockBlockchainData) getRandomAddress(chain ChainType) string {
 }
 
 // GenerateMultipleTransactions 生成多笔交易用于压力测试
-func (m *MockBlockchainData) GenerateMultipleTransactions(count int, chain ChainType, toAddress string, baseAmount decimal.Decimal) []MockTransaction {
+func (m *MockBlockchainData) GenerateMultipleTransactions(count int, chain string, toAddress string, baseAmount decimal.Decimal) []MockTransaction {
 	var transactions []MockTransaction
 	
 	for i := 0; i < count; i++ {
@@ -190,39 +182,7 @@ func generateOptimismAddresses(count int) []string {
 	return addresses
 }
 
-// GenerateTransactionHash 生成交易哈希
-func GenerateTransactionHash(chain ChainType) string {
-	bytes := make([]byte, 32)
-	rand.Read(bytes)
-	
-	switch chain {
-	case ChainTRON:
-		return fmt.Sprintf("%x", bytes) // TRON 使用64位十六进制
-	default:
-		return fmt.Sprintf("0x%x", bytes) // EVM链使用0x前缀
-	}
-}
-
-// GenerateRandomAddress 生成随机地址
-func GenerateRandomAddress(chain ChainType) string {
-	switch chain {
-	case ChainTRON:
-		return "T" + generateRandomHex(33) // TRON地址以T开头
-	default:
-		return "0x" + generateRandomHex(40) // EVM地址以0x开头，40位十六进制
-	}
-}
-
-// generateRandomHex 生成随机十六进制字符串
-func generateRandomHex(length int) string {
-	bytes := make([]byte, (length+1)/2)
-	rand.Read(bytes)
-	hex := fmt.Sprintf("%x", bytes)
-	if len(hex) > length {
-		hex = hex[:length]
-	}
-	return hex
-}
+// These functions are now defined in factories.go to avoid duplication
 
 // generateBlockHeight 生成区块高度
 func generateBlockHeight() int64 {
@@ -232,15 +192,15 @@ func generateBlockHeight() int64 {
 }
 
 // generateGasUsed 生成Gas使用量
-func generateGasUsed(chain ChainType) int64 {
+func generateGasUsed(chain string) int64 {
 	switch chain {
 	case ChainTRON:
 		return 15000 + (time.Now().UnixNano() % 5000) // TRON 能量消耗
 	case ChainBSC:
 		return 21000 + (time.Now().UnixNano() % 10000) // BSC Gas
-	case ChainPolygon:
+	case ChainPOLY:
 		return 21000 + (time.Now().UnixNano() % 8000) // Polygon Gas
-	case ChainOptimism:
+	case ChainOP:
 		return 21000 + (time.Now().UnixNano() % 12000) // Optimism Gas
 	default:
 		return 21000
@@ -248,17 +208,17 @@ func generateGasUsed(chain ChainType) int64 {
 }
 
 // generateGasPrice 生成Gas价格
-func generateGasPrice(chain ChainType) decimal.Decimal {
+func generateGasPrice(chain string) decimal.Decimal {
 	switch chain {
 	case ChainTRON:
 		return decimal.NewFromInt(0) // TRON 不使用Gas价格概念
 	case ChainBSC:
 		base := 5.0 + float64(time.Now().UnixNano()%10) // 5-15 Gwei
 		return decimal.NewFromFloat(base)
-	case ChainPolygon:
+	case ChainPOLY:
 		base := 30.0 + float64(time.Now().UnixNano()%20) // 30-50 Gwei
 		return decimal.NewFromFloat(base)
-	case ChainOptimism:
+	case ChainOP:
 		base := 0.1 + float64(time.Now().UnixNano()%5)/10.0 // 0.1-0.6 Gwei
 		return decimal.NewFromFloat(base)
 	default:
@@ -279,12 +239,12 @@ func NewTestBlockchainScenarios() *TestBlockchainScenarios {
 }
 
 // ScenarioNormalPayment 正常支付场景
-func (s *TestBlockchainScenarios) ScenarioNormalPayment(chain ChainType, toAddress string, amount decimal.Decimal) MockTransaction {
+func (s *TestBlockchainScenarios) ScenarioNormalPayment(chain string, toAddress string, amount decimal.Decimal) MockTransaction {
 	return s.blockchain.GenerateTransaction(chain, toAddress, amount)
 }
 
 // ScenarioDelayedPayment 延迟支付场景
-func (s *TestBlockchainScenarios) ScenarioDelayedPayment(chain ChainType, toAddress string, amount decimal.Decimal) MockTransaction {
+func (s *TestBlockchainScenarios) ScenarioDelayedPayment(chain string, toAddress string, amount decimal.Decimal) MockTransaction {
 	tx := s.blockchain.GeneratePendingTransaction(chain, toAddress, amount)
 	
 	// 模拟延迟确认
@@ -297,31 +257,31 @@ func (s *TestBlockchainScenarios) ScenarioDelayedPayment(chain ChainType, toAddr
 }
 
 // ScenarioPartialPayment 部分支付场景
-func (s *TestBlockchainScenarios) ScenarioPartialPayment(chain ChainType, toAddress string, expectedAmount decimal.Decimal) MockTransaction {
+func (s *TestBlockchainScenarios) ScenarioPartialPayment(chain string, toAddress string, expectedAmount decimal.Decimal) MockTransaction {
 	// 支付金额少于预期
 	actualAmount := expectedAmount.Mul(decimal.NewFromFloat(0.8)) // 80%的金额
 	return s.blockchain.GenerateTransaction(chain, toAddress, actualAmount)
 }
 
 // ScenarioOverpayment 超额支付场景
-func (s *TestBlockchainScenarios) ScenarioOverpayment(chain ChainType, toAddress string, expectedAmount decimal.Decimal) MockTransaction {
+func (s *TestBlockchainScenarios) ScenarioOverpayment(chain string, toAddress string, expectedAmount decimal.Decimal) MockTransaction {
 	// 支付金额多于预期
 	actualAmount := expectedAmount.Mul(decimal.NewFromFloat(1.2)) // 120%的金额
 	return s.blockchain.GenerateTransaction(chain, toAddress, actualAmount)
 }
 
 // ScenarioFailedPayment 支付失败场景
-func (s *TestBlockchainScenarios) ScenarioFailedPayment(chain ChainType, toAddress string, amount decimal.Decimal) MockTransaction {
+func (s *TestBlockchainScenarios) ScenarioFailedPayment(chain string, toAddress string, amount decimal.Decimal) MockTransaction {
 	return s.blockchain.GenerateFailedTransaction(chain, toAddress, amount)
 }
 
 // ScenarioConcurrentPayments 并发支付场景
-func (s *TestBlockchainScenarios) ScenarioConcurrentPayments(chain ChainType, toAddress string, baseAmount decimal.Decimal, count int) []MockTransaction {
+func (s *TestBlockchainScenarios) ScenarioConcurrentPayments(chain string, toAddress string, baseAmount decimal.Decimal, count int) []MockTransaction {
 	return s.blockchain.GenerateMultipleTransactions(count, chain, toAddress, baseAmount)
 }
 
 // ScenarioNetworkCongestion 网络拥堵场景
-func (s *TestBlockchainScenarios) ScenarioNetworkCongestion(chain ChainType, toAddress string, amount decimal.Decimal) MockTransaction {
+func (s *TestBlockchainScenarios) ScenarioNetworkCongestion(chain string, toAddress string, amount decimal.Decimal) MockTransaction {
 	// 模拟网络拥堵，高Gas价格，长确认时间
 	tx := s.blockchain.GenerateTransaction(chain, toAddress, amount)
 	tx.GasPrice = tx.GasPrice.Mul(decimal.NewFromFloat(3.0)) // 3倍Gas价格

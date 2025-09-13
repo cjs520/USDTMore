@@ -220,8 +220,6 @@ func TestCalcTradeAmount(t *testing.T) {
 	err = db.Create(wallet2).Error
 	require.NoError(t, err)
 
-	wallets := []model.WalletAddress{*wallet1, *wallet2}
-
 	t.Run("No existing orders", func(t *testing.T) {
 		testutils.CleanDatabase(db)
 		db.Create(wallet1)

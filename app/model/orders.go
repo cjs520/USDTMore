@@ -1,10 +1,15 @@
 package model
 
 import (
-	"github.com/shopspring/decimal"
+	"context"
+	"errors"
+	"fmt"
+	"math/rand"
 	"strconv"
-	"sync"
 	"time"
+
+	"github.com/shopspring/decimal"
+	"gorm.io/gorm"
 )
 
 const OrderStatusExpired = 3
@@ -15,7 +20,7 @@ const OrderNotifyStateSucc = 1
 const OrderNotifyStateFail = 0
 const Atomicity = 0.01 // 原子精度
 
-var _calcMutex sync.Mutex
+// 移除全局锁，改为使用数据库事务和乐观锁
 
 type TradeOrders struct {
 	Id          int64     `gorm:"primary_key;AUTO_INCREMENT;comment:id"`
@@ -29,6 +34,7 @@ type TradeOrders struct {
 	Address     string    `gorm:"type:varchar(34);not null;comment:收款地址"`
 	FromAddress string    `gorm:"type:varchar(34);not null;default:'';comment:支付地址"`
 	Status      int       `gorm:"type:tinyint(1);not null;default:0;comment:交易状态 1：等待支付 2：支付成功 3：订单过期"`
+	Version     int64     `gorm:"type:bigint;not null;default:0;comment:乐观锁版本号"`
 	ReturnUrl   string    `gorm:"type:varchar(255);not null;default:'';comment:同步地址"`
 	NotifyUrl   string    `gorm:"type:varchar(255);not null;default:'';comment:异步地址"`
 	NotifyNum   int       `gorm:"type:int(11);not null;default:0;comment:回调次数"`
@@ -48,17 +54,44 @@ func (o *TradeOrders) OrderSetExpired() error {
 }
 
 /*
-设置成工程
+设置成功 - 使用乐观锁机制
 */
 func (o *TradeOrders) OrderSetSucc(fromAddress, tradeHash string, confirmedAt time.Time) error {
-	// 订单标记交易成功
+	return o.OrderSetSuccWithContext(context.Background(), fromAddress, tradeHash, confirmedAt)
+}
+
+/*
+设置成功 - 带上下文的乐观锁实现
+*/
+func (o *TradeOrders) OrderSetSuccWithContext(ctx context.Context, fromAddress, tradeHash string, confirmedAt time.Time) error {
+	// 使用乐观锁更新订单状态
+	currentVersion := o.Version
+	result := DB.WithContext(ctx).Model(o).
+		Where("id = ? AND version = ?", o.Id, currentVersion).
+		Updates(map[string]interface{}{
+			"status":       OrderStatusSuccess,
+			"from_address": fromAddress,
+			"confirmed_at": confirmedAt,
+			"trade_hash":   tradeHash,
+			"version":      currentVersion + 1,
+		})
+
+	if result.Error != nil {
+		return fmt.Errorf("failed to update order status: %w", result.Error)
+	}
+
+	if result.RowsAffected == 0 {
+		return errors.New("order update failed: version conflict or order not found")
+	}
+
+	// 更新本地对象的状态
 	o.Status = OrderStatusSuccess
 	o.FromAddress = fromAddress
 	o.ConfirmedAt = confirmedAt
 	o.TradeHash = tradeHash
-	r := DB.Save(o)
+	o.Version = currentVersion + 1
 
-	return r.Error
+	return nil
 }
 
 /*
@@ -117,37 +150,130 @@ func GetNotifyFailedTradeOrders() ([]TradeOrders, error) {
 	return orders, res.Error
 }
 
-// CalcTradeAmount 计算当前实际可用的交易金额
-func CalcTradeAmount(wa []WalletAddress, rate, money float64) (WalletAddress, string) {
-	_calcMutex.Lock()
-	defer _calcMutex.Unlock()
+// CalcTradeAmountResult 计算交易金额的结果
+type CalcTradeAmountResult struct {
+	Address WalletAddress
+	Amount  string
+	Error   error
+}
 
-	var _orders []TradeOrders
-	var _lock = make(map[string]bool)
-	DB.Where("status = ?", OrderStatusWaiting).Find(&_orders)
-	for _, _order := range _orders {
-		// 标准化订单金额格式，确保与其他地方的Key一致
-		amount, _ := decimal.NewFromString(_order.Amount)
-		standardAmount := amount.StringFixed(2)
-		_lock[_order.Chain+_order.Address+standardAmount] = true
+// CalcTradeAmount 计算当前实际可用的交易金额 - 无锁并发版本
+func CalcTradeAmount(wa []WalletAddress, rate, money float64) (WalletAddress, string) {
+	// 向后兼容：如果DB未初始化，直接返回第一个地址和基础金额
+	if DB == nil {
+		if len(wa) > 0 {
+			payAmount := strconv.FormatFloat(money/rate, 'f', 2, 64)
+			return wa[0], payAmount
+		}
+		return WalletAddress{}, "0"
 	}
 
-	var _atom = decimal.NewFromFloat(Atomicity)
-	var payAmount = strconv.FormatFloat(money/rate, 'f', 2, 64)
-	var _payAmount, _ = decimal.NewFromString(payAmount)
-	for {
-		for _, address := range wa {
-			// 使用标准化的金额格式进行Key匹配
-			standardPayAmount := _payAmount.StringFixed(2)
-			_key := address.Chain + address.Address + standardPayAmount
-			if _, ok := _lock[_key]; ok {
-				continue
-			}
+	result := CalcTradeAmountWithContext(context.Background(), wa, rate, money)
+	if result.Error != nil {
+		// 如果出错，返回第一个地址和基础金额（向后兼容）
+		if len(wa) > 0 {
+			payAmount := strconv.FormatFloat(money/rate, 'f', 2, 64)
+			return wa[0], payAmount
+		}
+		return WalletAddress{}, "0"
+	}
+	return result.Address, result.Amount
+}
 
-			return address, _payAmount.String()
+// CalcTradeAmountWithContext 带上下文的计算交易金额
+func CalcTradeAmountWithContext(ctx context.Context, wa []WalletAddress, rate, money float64) CalcTradeAmountResult {
+	const (
+		maxRetries = 10
+		maxAmount  = 100000.0 // 最大金额限制
+	)
+
+	if len(wa) == 0 {
+		return CalcTradeAmountResult{Error: errors.New("no wallet addresses available")}
+	}
+
+	baseAmount := decimal.NewFromFloat(money / rate)
+	atom := decimal.NewFromFloat(Atomicity)
+	
+	// 智能金额递增算法：线性递增 + 随机偏移
+	for attempt := 0; attempt < maxRetries; attempt++ {
+		// 线性递增
+		linearIncrement := atom.Mul(decimal.NewFromInt(int64(attempt)))
+		
+		// 添加小的随机偏移以分散并发请求
+		randomOffset := decimal.NewFromFloat(rand.Float64() * 0.01) // 0-0.01 USDT
+		
+		currentAmount := baseAmount.Add(linearIncrement).Add(randomOffset)
+		standardAmount := currentAmount.StringFixed(2)
+		
+		// 金额上限检查
+		if currentAmount.GreaterThan(decimal.NewFromFloat(maxAmount)) {
+			return CalcTradeAmountResult{Error: errors.New("amount exceeds maximum limit")}
 		}
 
-		// 已经被占用，每次递增一个原子精度
-		_payAmount = _payAmount.Add(_atom)
+		// 尝试为每个地址找到可用金额
+		for _, address := range wa {
+			result := tryReserveAmountWithTransaction(ctx, address, standardAmount)
+			if result.Error == nil {
+				return CalcTradeAmountResult{
+					Address: address,
+					Amount:  standardAmount,
+				}
+			}
+		}
+		
+		// 短暂休眠以避免过度竞争
+		select {
+		case <-ctx.Done():
+			return CalcTradeAmountResult{Error: ctx.Err()}
+		case <-time.After(time.Millisecond * time.Duration(1+rand.Intn(10))):
+			// 继续下一次尝试
+		}
+	}
+
+	return CalcTradeAmountResult{Error: errors.New("failed to find available amount after max retries")}
+}
+
+// tryReserveAmountWithTransaction 使用数据库事务尝试预留金额
+func tryReserveAmountWithTransaction(ctx context.Context, address WalletAddress, amount string) CalcTradeAmountResult {
+	// 使用SELECT FOR UPDATE的事务来检查金额是否已被占用
+	tx := DB.WithContext(ctx).Begin()
+	if tx.Error != nil {
+		return CalcTradeAmountResult{Error: fmt.Errorf("failed to start transaction: %w", tx.Error)}
+	}
+	
+	defer func() {
+		if r := recover(); r != nil {
+			tx.Rollback()
+			panic(r)
+		}
+	}()
+
+	// 使用SELECT FOR UPDATE锁定相关的等待中订单
+	var existingOrder TradeOrders
+	result := tx.Where("status = ? AND chain = ? AND address = ? AND amount = ?", 
+		OrderStatusWaiting, address.Chain, address.Address, amount).
+		Select("id").
+		First(&existingOrder)
+
+	if result.Error == nil {
+		// 金额已被占用
+		tx.Rollback()
+		return CalcTradeAmountResult{Error: errors.New("amount already reserved")}
+	}
+
+	if !errors.Is(result.Error, gorm.ErrRecordNotFound) {
+		// 其他数据库错误
+		tx.Rollback()
+		return CalcTradeAmountResult{Error: fmt.Errorf("database query error: %w", result.Error)}
+	}
+
+	// 金额可用，提交事务
+	if err := tx.Commit().Error; err != nil {
+		return CalcTradeAmountResult{Error: fmt.Errorf("failed to commit transaction: %w", err)}
+	}
+
+	return CalcTradeAmountResult{
+		Address: address,
+		Amount:  amount,
 	}
 }

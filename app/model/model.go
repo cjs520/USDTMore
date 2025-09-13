@@ -2,8 +2,13 @@ package model
 
 import (
 	"USDTMore/app/config"
+	"context"
+	"database/sql"
 	"fmt"
 	"log"
+	"os"
+	"path/filepath"
+	"sync"
 	"time"
 	
 	"gorm.io/driver/postgres"
@@ -19,6 +24,13 @@ const (
 	maxRetries = 5
 	baseDelay  = 1 * time.Second
 	maxDelay   = 30 * time.Second
+)
+
+// 数据库迁移状态管理
+var (
+	migrationMutex    sync.RWMutex
+	migrationComplete bool
+	migrationLockFile = "/tmp/usdtmore_migration.lock"
 )
 
 func Init() error {
@@ -112,32 +124,429 @@ func initPostgreSQL() (*gorm.DB, error) {
 		return nil, fmt.Errorf("failed to get underlying sql.DB: %v", err)
 	}
 	
-	// 设置连接池参数
-	sqlDB.SetMaxIdleConns(config.GetDbMaxIdleConns())
-	sqlDB.SetMaxOpenConns(config.GetDbMaxOpenConns())
-	sqlDB.SetConnMaxLifetime(config.GetDbConnMaxLifetime())
-	sqlDB.SetConnMaxIdleTime(config.GetDbConnMaxIdleTime())
+	// 设置连接池参数 - 基于高并发优化
+	maxIdleConns := config.GetDbMaxIdleConns()
+	maxOpenConns := config.GetDbMaxOpenConns()
+	connMaxLifetime := config.GetDbConnMaxLifetime()
+	connMaxIdleTime := config.GetDbConnMaxIdleTime()
+	
+	// 动态调整连接池参数（基于并发测试结果）
+	if maxOpenConns < 50 {
+		maxOpenConns = 50 // 高并发场景最小值
+		log.Printf("Adjusting MaxOpenConns to %d for high concurrency support", maxOpenConns)
+	}
+	if maxIdleConns < 20 {
+		maxIdleConns = 20 // 保持足够的空闲连接
+		log.Printf("Adjusting MaxIdleConns to %d for better performance", maxIdleConns)
+	}
+	
+	sqlDB.SetMaxIdleConns(maxIdleConns)
+	sqlDB.SetMaxOpenConns(maxOpenConns)
+	sqlDB.SetConnMaxLifetime(connMaxLifetime)
+	sqlDB.SetConnMaxIdleTime(connMaxIdleTime)
 	
 	log.Printf("PostgreSQL connection pool configured: MaxIdleConns=%d, MaxOpenConns=%d, ConnMaxLifetime=%v, ConnMaxIdleTime=%v",
-		config.GetDbMaxIdleConns(), config.GetDbMaxOpenConns(),
-		config.GetDbConnMaxLifetime(), config.GetDbConnMaxIdleTime())
+		maxIdleConns, maxOpenConns, connMaxLifetime, connMaxIdleTime)
+	
+	// 启动连接池健康检查
+	go startConnectionPoolMonitoring(sqlDB)
 	
 	return db, nil
 }
 
 
-// AutoMigrate 执行数据库迁移
+// AutoMigrate 执行数据库迁移（并发安全版本）
 func AutoMigrate() error {
 	if DB == nil {
 		return fmt.Errorf("database connection is not initialized")
 	}
 	
-	err := DB.AutoMigrate(&WalletAddress{}, &TradeOrders{}, &NotifyRecord{})
+	return AutoMigrateWithContext(context.Background())
+}
+
+// AutoMigrateWithContext 带上下文的数据库迁移
+func AutoMigrateWithContext(ctx context.Context) error {
+	// 检查迁移是否已完成
+	migrationMutex.RLock()
+	if migrationComplete {
+		migrationMutex.RUnlock()
+		log.Println("Database migration already completed")
+		return nil
+	}
+	migrationMutex.RUnlock()
+
+	// 获取写锁进行迁移
+	migrationMutex.Lock()
+	defer migrationMutex.Unlock()
+
+	// 双重检查，避免重复迁移
+	if migrationComplete {
+		log.Println("Database migration already completed (double check)")
+		return nil
+	}
+
+	// 创建迁移锁文件
+	_, err := createMigrationLock()
 	if err != nil {
-		return fmt.Errorf("auto migration failed: %v", err)
+		log.Printf("Warning: Could not create migration lock file: %v", err)
+		// 继续执行，不阻塞迁移
+	}
+	defer removeMigrationLock()
+
+	// 执行迁移前验证
+	if err := preMigrationValidation(ctx); err != nil {
+		return fmt.Errorf("pre-migration validation failed: %w", err)
+	}
+
+	log.Println("Starting database migration...")
+	
+	// 执行基础表结构迁移
+	err = DB.WithContext(ctx).AutoMigrate(
+		&WalletAddress{}, 
+		&TradeOrders{}, 
+		&NotifyRecord{},
+	)
+	if err != nil {
+		return fmt.Errorf("auto migration failed: %w", err)
+	}
+
+	// 执行索引和约束优化
+	if err := executeIndexOptimizations(ctx); err != nil {
+		log.Printf("Warning: Index optimizations failed: %v", err)
+		// 不阻塞主要迁移流程
+	}
+
+	// 执行迁移后验证
+	if err := postMigrationValidation(ctx); err != nil {
+		return fmt.Errorf("post-migration validation failed: %w", err)
+	}
+
+	// 标记迁移完成
+	migrationComplete = true
+	log.Println("Database migration completed successfully")
+	return nil
+}
+
+// preMigrationValidation 迁移前验证
+func preMigrationValidation(ctx context.Context) error {
+	// 检查数据库连接
+	if err := Ping(); err != nil {
+		return fmt.Errorf("database ping failed: %w", err)
+	}
+
+	// 检查数据库权限
+	var result int
+	err := DB.WithContext(ctx).Raw("SELECT 1").Scan(&result).Error
+	if err != nil {
+		return fmt.Errorf("database access test failed: %w", err)
+	}
+
+	log.Println("Pre-migration validation passed")
+	return nil
+}
+
+// postMigrationValidation 迁移后验证
+func postMigrationValidation(ctx context.Context) error {
+	// 验证表是否存在
+	tables := []string{"trade_orders", "wallet_address", "notify_record"}
+	for _, table := range tables {
+		var exists bool
+		err := DB.WithContext(ctx).Raw(
+			"SELECT EXISTS (SELECT FROM information_schema.tables WHERE table_name = ?)", 
+			table,
+		).Scan(&exists).Error
+		if err != nil {
+			return fmt.Errorf("failed to check table %s: %w", table, err)
+		}
+		if !exists {
+			return fmt.Errorf("table %s was not created", table)
+		}
+	}
+
+	// 验证关键字段是否存在
+	if err := validateTradeOrdersSchema(ctx); err != nil {
+		return fmt.Errorf("TradeOrders schema validation failed: %w", err)
+	}
+
+	log.Println("Post-migration validation passed")
+	return nil
+}
+
+// validateTradeOrdersSchema 验证TradeOrders表结构
+func validateTradeOrdersSchema(ctx context.Context) error {
+	requiredColumns := []string{"id", "order_id", "trade_id", "version", "status", "amount", "chain", "address"}
+	
+	for _, column := range requiredColumns {
+		var exists bool
+		err := DB.WithContext(ctx).Raw(`
+			SELECT EXISTS (
+				SELECT FROM information_schema.columns 
+				WHERE table_name = 'trade_orders' AND column_name = ?
+			)
+		`, column).Scan(&exists).Error
+		
+		if err != nil {
+			return fmt.Errorf("failed to check column %s: %w", column, err)
+		}
+		if !exists {
+			return fmt.Errorf("required column %s not found in trade_orders table", column)
+		}
 	}
 	
-	log.Println("Database migration completed successfully")
+	return nil
+}
+
+// executeIndexOptimizations 执行索引优化
+func executeIndexOptimizations(ctx context.Context) error {
+	// 读取并执行索引优化SQL
+	migrationFile := "migrations/002_optimize_indexes.sql"
+	if _, err := os.Stat(migrationFile); os.IsNotExist(err) {
+		log.Printf("Index optimization file %s not found, skipping", migrationFile)
+		return nil
+	}
+
+	content, err := os.ReadFile(migrationFile)
+	if err != nil {
+		return fmt.Errorf("failed to read migration file: %w", err)
+	}
+
+	// 执行SQL语句
+	err = DB.WithContext(ctx).Exec(string(content)).Error
+	if err != nil {
+		return fmt.Errorf("failed to execute index optimizations: %w", err)
+	}
+
+	log.Println("Index optimizations completed")
+	return nil
+}
+
+// createMigrationLock 创建迁移锁文件
+func createMigrationLock() (*os.File, error) {
+	// 创建锁文件目录
+	lockDir := filepath.Dir(migrationLockFile)
+	if err := os.MkdirAll(lockDir, 0755); err != nil {
+		return nil, fmt.Errorf("failed to create lock directory: %w", err)
+	}
+
+	// 检查锁文件是否已存在
+	if _, err := os.Stat(migrationLockFile); err == nil {
+		return nil, fmt.Errorf("migration lock file already exists, another migration may be in progress")
+	}
+
+	// 创建锁文件
+	lockFile, err := os.Create(migrationLockFile)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create lock file: %w", err)
+	}
+
+	// 写入进程信息
+	pid := os.Getpid()
+	timestamp := time.Now().Format(time.RFC3339)
+	lockContent := fmt.Sprintf("PID: %d\nTimestamp: %s\n", pid, timestamp)
+	
+	if _, err := lockFile.WriteString(lockContent); err != nil {
+		lockFile.Close()
+		os.Remove(migrationLockFile)
+		return nil, fmt.Errorf("failed to write lock file content: %w", err)
+	}
+
+	return lockFile, nil
+}
+
+// removeMigrationLock 移除迁移锁文件
+func removeMigrationLock() {
+	if err := os.Remove(migrationLockFile); err != nil && !os.IsNotExist(err) {
+		log.Printf("Warning: Failed to remove migration lock file: %v", err)
+	}
+}
+
+// IsMigrationInProgress 检查是否有迁移正在进行
+func IsMigrationInProgress() bool {
+	migrationMutex.RLock()
+	defer migrationMutex.RUnlock()
+	return !migrationComplete
+}
+
+// ResetMigrationState 重置迁移状态（仅用于测试）
+func ResetMigrationState() {
+	migrationMutex.Lock()
+	defer migrationMutex.Unlock()
+	migrationComplete = false
+	removeMigrationLock()
+}
+
+// startConnectionPoolMonitoring 启动连接池监控
+func startConnectionPoolMonitoring(sqlDB *sql.DB) {
+	if !config.IsDbMonitoringEnabled() {
+		log.Println("Database connection monitoring is disabled")
+		return
+	}
+
+	interval := config.GetDbMonitoringInterval()
+	log.Printf("Starting connection pool monitoring with interval: %v", interval)
+
+	ticker := time.NewTicker(interval)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ticker.C:
+			monitorConnectionPool(sqlDB)
+		}
+	}
+}
+
+// monitorConnectionPool 监控连接池状态
+func monitorConnectionPool(sqlDB *sql.DB) {
+	stats := sqlDB.Stats()
+	
+	// 记录连接池统计信息
+	log.Printf("Connection Pool Stats: OpenConnections=%d, InUse=%d, Idle=%d, MaxOpenConns=%d, MaxLifetimeClosed=%d, MaxIdleTimeClosed=%d",
+		stats.OpenConnections, stats.InUse, stats.Idle, stats.MaxOpenConnections,
+		stats.MaxLifetimeClosed, stats.MaxIdleTimeClosed)
+
+	// 连接池健康检查
+	if err := performHealthCheck(sqlDB); err != nil {
+		log.Printf("Connection pool health check failed: %v", err)
+		// 尝试重连
+		if err := attemptReconnection(); err != nil {
+			log.Printf("Failed to reconnect to database: %v", err)
+		}
+	}
+
+	// 检查连接使用率
+	if stats.MaxOpenConnections > 0 {
+		usageRate := float64(stats.InUse) / float64(stats.MaxOpenConnections) * 100
+		if usageRate > 80 {
+			log.Printf("Warning: High connection usage rate: %.2f%%", usageRate)
+		}
+	}
+
+	// 检查等待连接的情况
+	if stats.WaitCount > 0 {
+		avgWaitTime := stats.WaitDuration / time.Duration(stats.WaitCount)
+		log.Printf("Connection wait stats: Count=%d, TotalWaitDuration=%v, AvgWaitTime=%v",
+			stats.WaitCount, stats.WaitDuration, avgWaitTime)
+		
+		if avgWaitTime > time.Millisecond*100 {
+			log.Printf("Warning: High average connection wait time: %v", avgWaitTime)
+		}
+	}
+}
+
+// performHealthCheck 执行数据库健康检查
+func performHealthCheck(sqlDB *sql.DB) error {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	// 简单的ping检查
+	if err := sqlDB.PingContext(ctx); err != nil {
+		return fmt.Errorf("ping failed: %w", err)
+	}
+
+	// 执行简单查询检查
+	var result int
+	err := sqlDB.QueryRowContext(ctx, "SELECT 1").Scan(&result)
+	if err != nil {
+		return fmt.Errorf("query test failed: %w", err)
+	}
+
+	if result != 1 {
+		return fmt.Errorf("unexpected query result: %d", result)
+	}
+
+	return nil
+}
+
+// attemptReconnection 尝试重新连接数据库
+func attemptReconnection() error {
+	log.Println("Attempting to reconnect to database...")
+	
+	// 关闭当前连接
+	if DB != nil {
+		if sqlDB, err := DB.DB(); err == nil {
+			sqlDB.Close()
+		}
+	}
+
+	// 重新初始化连接
+	newDB, err := initPostgreSQLWithRetry()
+	if err != nil {
+		return fmt.Errorf("reconnection failed: %w", err)
+	}
+
+	DB = newDB
+	log.Println("Database reconnection successful")
+	return nil
+}
+
+// GetConnectionPoolStats 获取连接池统计信息
+func GetConnectionPoolStats() (*sql.DBStats, error) {
+	if DB == nil {
+		return nil, fmt.Errorf("database connection is not initialized")
+	}
+
+	sqlDB, err := DB.DB()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get underlying sql.DB: %w", err)
+	}
+
+	stats := sqlDB.Stats()
+	return &stats, nil
+}
+
+// CheckConnectionPoolHealth 检查连接池健康状态
+func CheckConnectionPoolHealth() error {
+	if DB == nil {
+		return fmt.Errorf("database connection is not initialized")
+	}
+
+	sqlDB, err := DB.DB()
+	if err != nil {
+		return fmt.Errorf("failed to get underlying sql.DB: %w", err)
+	}
+
+	return performHealthCheck(sqlDB)
+}
+
+// OptimizeConnectionPool 根据当前负载动态优化连接池
+func OptimizeConnectionPool() error {
+	if DB == nil {
+		return fmt.Errorf("database connection is not initialized")
+	}
+
+	sqlDB, err := DB.DB()
+	if err != nil {
+		return fmt.Errorf("failed to get underlying sql.DB: %w", err)
+	}
+
+	stats := sqlDB.Stats()
+	
+	// 根据使用模式调整连接池参数
+	if stats.MaxOpenConnections > 0 {
+		usageRate := float64(stats.InUse) / float64(stats.MaxOpenConnections)
+		
+		// 如果使用率持续较高，考虑增加连接数
+		if usageRate > 0.8 && stats.MaxOpenConnections < 200 {
+			newMaxOpen := int(float64(stats.MaxOpenConnections) * 1.2)
+			if newMaxOpen > 200 {
+				newMaxOpen = 200
+			}
+			sqlDB.SetMaxOpenConns(newMaxOpen)
+			log.Printf("Increased MaxOpenConns to %d due to high usage rate", newMaxOpen)
+		}
+		
+		// 如果使用率持续较低，考虑减少连接数
+		if usageRate < 0.2 && stats.MaxOpenConnections > 20 {
+			newMaxOpen := int(float64(stats.MaxOpenConnections) * 0.8)
+			if newMaxOpen < 20 {
+				newMaxOpen = 20
+			}
+			sqlDB.SetMaxOpenConns(newMaxOpen)
+			log.Printf("Decreased MaxOpenConns to %d due to low usage rate", newMaxOpen)
+		}
+	}
+
 	return nil
 }
 

@@ -3,7 +3,12 @@ package testutils
 import (
 	"USDTMore/app/model"
 	"fmt"
+	"io/ioutil"
 	"math/rand"
+	"os"
+	"runtime"
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -515,6 +520,308 @@ func CreateDataConsistencyTests() *DataConsistencyTestSuite {
 		BaseOrders:          baseOrders,
 		ConcurrentUpdates:   operations,
 		ExpectedFinalStates: expectedStates,
+	}
+}
+
+// 内存监控和性能测试辅助函数
+
+// GetMemoryUsage 获取当前内存使用量（字节）
+func GetMemoryUsage() int64 {
+	var memStats runtime.MemStats
+	runtime.ReadMemStats(&memStats)
+	return int64(memStats.Alloc)
+}
+
+// GetGoroutineCount 获取当前goroutine数量
+func GetGoroutineCount() int64 {
+	return int64(runtime.NumGoroutine())
+}
+
+// ForceGC 强制执行垃圾回收
+func ForceGC() {
+	runtime.GC()
+	runtime.GC() // 执行两次确保完全回收
+}
+
+// SaveTestReport 保存测试报告到文件
+func SaveTestReport(filename, content string) error {
+	return ioutil.WriteFile(filename, []byte(content), 0644)
+}
+
+// 链和地址生成常量
+const (
+	ChainTRON    = "TRON"
+	ChainBSC     = "BSC"
+	ChainPOLY    = "POLY"
+	ChainOP      = "OP"
+	ChainETH     = "ETH"
+	ChainARB     = "ARB"
+)
+
+// GenerateTransactionHash 生成随机交易哈希
+func GenerateTransactionHash(chain string) string {
+	switch chain {
+	case ChainTRON:
+		return fmt.Sprintf("tron_%s", generateRandomHex(32))
+	case ChainBSC, ChainPOLY, ChainOP, ChainETH, ChainARB:
+		return fmt.Sprintf("0x%s", generateRandomHex(64))
+	default:
+		return fmt.Sprintf("0x%s", generateRandomHex(64))
+	}
+}
+
+// GenerateRandomAddress 生成随机地址
+func GenerateRandomAddress(chain string) string {
+	switch chain {
+	case ChainTRON:
+		return fmt.Sprintf("T%s", generateRandomBase58(33))
+	case ChainBSC, ChainPOLY, ChainOP, ChainETH, ChainARB:
+		return fmt.Sprintf("0x%s", generateRandomHex(40))
+	default:
+		return fmt.Sprintf("0x%s", generateRandomHex(40))
+	}
+}
+
+// generateRandomHex 生成随机十六进制字符串
+func generateRandomHex(length int) string {
+	chars := "0123456789abcdef"
+	result := make([]byte, length)
+	for i := range result {
+		result[i] = chars[rand.Intn(len(chars))]
+	}
+	return string(result)
+}
+
+// generateRandomBase58 生成随机Base58字符串
+func generateRandomBase58(length int) string {
+	chars := "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz"
+	result := make([]byte, length)
+	for i := range result {
+		result[i] = chars[rand.Intn(len(chars))]
+	}
+	return string(result)
+}
+
+// 性能测试辅助函数
+
+// PerformanceTestResult 性能测试结果
+type PerformanceTestResult struct {
+	TotalRequests     int64
+	SuccessfulRequests int64
+	FailedRequests    int64
+	AverageLatency    time.Duration
+	ThroughputPerSec  float64
+	ErrorRate         float64
+}
+
+// CalculatePerformanceMetrics 计算性能指标
+func CalculatePerformanceMetrics(totalRequests, successfulRequests int64, totalDuration time.Duration) PerformanceTestResult {
+	failedRequests := totalRequests - successfulRequests
+	errorRate := 0.0
+	if totalRequests > 0 {
+		errorRate = float64(failedRequests) / float64(totalRequests) * 100
+	}
+	
+	averageLatency := time.Duration(0)
+	if successfulRequests > 0 {
+		averageLatency = totalDuration / time.Duration(successfulRequests)
+	}
+	
+	throughputPerSec := 0.0
+	if totalDuration.Seconds() > 0 {
+		throughputPerSec = float64(successfulRequests) / totalDuration.Seconds()
+	}
+	
+	return PerformanceTestResult{
+		TotalRequests:      totalRequests,
+		SuccessfulRequests: successfulRequests,
+		FailedRequests:     failedRequests,
+		AverageLatency:     averageLatency,
+		ThroughputPerSec:   throughputPerSec,
+		ErrorRate:          errorRate,
+	}
+}
+
+// 系统资源监控
+
+// SystemResourceUsage 系统资源使用情况
+type SystemResourceUsage struct {
+	MemoryUsage    int64   // 内存使用量（字节）
+	GoroutineCount int64   // Goroutine数量
+	CPUUsage       float64 // CPU使用率（百分比）
+	Timestamp      time.Time
+}
+
+// GetSystemResourceUsage 获取系统资源使用情况
+func GetSystemResourceUsage() SystemResourceUsage {
+	return SystemResourceUsage{
+		MemoryUsage:    GetMemoryUsage(),
+		GoroutineCount: GetGoroutineCount(),
+		CPUUsage:       getCPUUsage(),
+		Timestamp:      time.Now(),
+	}
+}
+
+// getCPUUsage 获取CPU使用率（简化实现）
+func getCPUUsage() float64 {
+	// 简化的CPU使用率检测
+	// 在实际环境中，应该使用更精确的方法
+	if runtime.GOOS == "linux" {
+		content, err := ioutil.ReadFile("/proc/loadavg")
+		if err == nil {
+			parts := strings.Fields(string(content))
+			if len(parts) > 0 {
+				if load, err := strconv.ParseFloat(parts[0], 64); err == nil {
+					return load * 100 / float64(runtime.NumCPU())
+				}
+			}
+		}
+	}
+	return 0.0 // 无法获取时返回0
+}
+
+// 数据验证辅助函数
+
+// ValidateOrderData 验证订单数据完整性
+func ValidateOrderData(order *model.TradeOrders) []string {
+	var errors []string
+	
+	if order.OrderId == "" {
+		errors = append(errors, "OrderId is empty")
+	}
+	if order.TradeId == "" {
+		errors = append(errors, "TradeId is empty")
+	}
+	if order.Amount == "" {
+		errors = append(errors, "Amount is empty")
+	}
+	if order.Chain == "" {
+		errors = append(errors, "Chain is empty")
+	}
+	if order.Address == "" {
+		errors = append(errors, "Address is empty")
+	}
+	if order.Money <= 0 {
+		errors = append(errors, "Money must be positive")
+	}
+	if order.ExpiredAt.Before(time.Now()) {
+		errors = append(errors, "ExpiredAt is in the past")
+	}
+	
+	return errors
+}
+
+// CompareOrders 比较两个订单是否相等
+func CompareOrders(order1, order2 *model.TradeOrders) bool {
+	return order1.OrderId == order2.OrderId &&
+		order1.TradeId == order2.TradeId &&
+		order1.Amount == order2.Amount &&
+		order1.Chain == order2.Chain &&
+		order1.Address == order2.Address &&
+		order1.Status == order2.Status
+}
+
+// 测试环境配置
+
+// TestConfig 测试配置
+type TestConfig struct {
+	DatabaseURL     string
+	TestTimeout     time.Duration
+	EnableDebugLog  bool
+	CleanupOnFail   bool
+}
+
+// GetTestConfig 获取测试配置
+func GetTestConfig() *TestConfig {
+	timeout := 30 * time.Second
+	if timeoutStr := os.Getenv("TEST_TIMEOUT"); timeoutStr != "" {
+		if duration, err := time.ParseDuration(timeoutStr); err == nil {
+			timeout = duration
+		}
+	}
+	
+	return &TestConfig{
+		DatabaseURL:    os.Getenv("TEST_DATABASE_URL"),
+		TestTimeout:    timeout,
+		EnableDebugLog: os.Getenv("TEST_DEBUG") == "true",
+		CleanupOnFail:  os.Getenv("TEST_CLEANUP_ON_FAIL") != "false",
+	}
+}
+
+// 并发测试辅助函数
+
+// ConcurrentTestResult 并发测试结果
+type ConcurrentTestResult struct {
+	TotalOperations    int64
+	SuccessfulOps      int64
+	FailedOps          int64
+	ConflictCount      int64
+	AverageLatency     time.Duration
+	MaxLatency         time.Duration
+	MinLatency         time.Duration
+	ThroughputPerSec   float64
+}
+
+// RunConcurrentTest 运行并发测试
+func RunConcurrentTest(concurrency int, operation func() error) ConcurrentTestResult {
+	startTime := time.Now()
+	results := make(chan error, concurrency)
+	latencies := make(chan time.Duration, concurrency)
+	
+	// 启动并发操作
+	for i := 0; i < concurrency; i++ {
+		go func() {
+			opStart := time.Now()
+			err := operation()
+			latency := time.Since(opStart)
+			
+			results <- err
+			latencies <- latency
+		}()
+	}
+	
+	// 收集结果
+	var successfulOps, failedOps, conflictCount int64
+	var totalLatency, maxLatency, minLatency time.Duration
+	minLatency = time.Hour // 初始化为一个大值
+	
+	for i := 0; i < concurrency; i++ {
+		err := <-results
+		latency := <-latencies
+		
+		if err != nil {
+			failedOps++
+			if strings.Contains(err.Error(), "conflict") ||
+			   strings.Contains(err.Error(), "version") ||
+			   strings.Contains(err.Error(), "already reserved") {
+				conflictCount++
+			}
+		} else {
+			successfulOps++
+		}
+		
+		totalLatency += latency
+		if latency > maxLatency {
+			maxLatency = latency
+		}
+		if latency < minLatency {
+			minLatency = latency
+		}
+	}
+	
+	totalDuration := time.Since(startTime)
+	averageLatency := totalLatency / time.Duration(concurrency)
+	throughputPerSec := float64(successfulOps) / totalDuration.Seconds()
+	
+	return ConcurrentTestResult{
+		TotalOperations:  int64(concurrency),
+		SuccessfulOps:    successfulOps,
+		FailedOps:        failedOps,
+		ConflictCount:    conflictCount,
+		AverageLatency:   averageLatency,
+		MaxLatency:       maxLatency,
+		MinLatency:       minLatency,
+		ThroughputPerSec: throughputPerSec,
 	}
 }
 

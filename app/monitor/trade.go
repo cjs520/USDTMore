@@ -6,6 +6,7 @@ import (
 	"USDTMore/app/log"
 	"USDTMore/app/model"
 	"USDTMore/app/notify"
+	"USDTMore/app/service"
 	"USDTMore/app/telegram"
 	"context"
 	"fmt"
@@ -27,6 +28,11 @@ const usdtToken = "TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t"
 func TradeStart(ctx context.Context) {
 	log.Info("交易监控启动.")
 	
+	// 创建服务层实例
+	repo := service.NewOrderRepository(model.DB)
+	amountSvc := service.NewAmountService(repo)
+	orderSvc := service.NewOrderService(repo, amountSvc)
+	
 	ticker := time.NewTicker(5 * time.Second)
 	defer ticker.Stop()
 
@@ -37,10 +43,32 @@ func TradeStart(ctx context.Context) {
 			return
 		case <-ticker.C:
 		var recentTransferTotal float64
-		var _lock, err = getAllPendingOrders()
+		
+		// 使用服务层获取待支付订单
+		pendingOrders, err := orderSvc.GetPendingOrders(ctx)
 		if err != nil {
-			log.Error(err.Error())
+			log.Error("获取待支付订单失败:", err.Error())
 			continue
+		}
+		
+		// 转换为兼容的格式
+		var _lock = make(map[string]model.TradeOrders)
+		for _, order := range pendingOrders {
+			// 处理过期订单
+			if time.Now().Unix() >= order.ExpiredAt.Unix() {
+				err := orderSvc.UpdateOrderStatus(ctx, order.Id, model.OrderStatusExpired, order.Version)
+				if err != nil {
+					log.Error("订单过期标记失败：", err, order.OrderId)
+				} else {
+					log.Info("订单过期：", order.OrderId)
+				}
+				continue
+			}
+			
+			// 标准化订单金额格式
+			amount, _ := decimal.NewFromString(order.Amount)
+			standardAmount := amount.StringFixed(2)
+			_lock[order.Chain+order.Address+standardAmount] = order
 		}
 
 		// 这里是TRON网络的监控
@@ -185,33 +213,7 @@ func TradeStart(ctx context.Context) {
 	}
 }
 
-/*
-列出所有等待支付的交易订单
-*/
-func getAllPendingOrders() (map[string]model.TradeOrders, error) {
-	tradeOrders, err := model.GetTradeOrderByStatus(model.OrderStatusWaiting)
-	if err != nil {
-		return nil, fmt.Errorf("待支付订单获取失败: %w", err)
-	}
-
-	var _lock = make(map[string]model.TradeOrders) // 当前所有正在等待支付的订单 Lock Key
-	for _, order := range tradeOrders {
-		if time.Now().Unix() >= order.ExpiredAt.Unix() { // 订单过期
-			err := order.OrderSetExpired()
-			if err != nil {
-				log.Error("订单过期标记失败：", err, order.OrderId)
-			} else {
-				log.Info("订单过期：", order.OrderId)
-			}
-			continue
-		}
-		// 标准化订单金额格式，确保与交易匹配时的Key一致
-		amount, _ := decimal.NewFromString(order.Amount)
-		standardAmount := amount.StringFixed(2)
-		_lock[order.Chain+order.Address+standardAmount] = order
-	}
-	return _lock, nil
-}
+// getAllPendingOrders 已移除，现在使用服务层的 GetPendingOrders 方法
 
 // 处理支付交易 TronScan
 func handlePaymentTransactionForTronScan(_lock map[string]model.TradeOrders, _toAddress string, _data gjson.Result) {

@@ -5,10 +5,13 @@ import (
 	"USDTMore/app/help"
 	"USDTMore/app/log"
 	"USDTMore/app/model"
+	"USDTMore/app/service"
 	"USDTMore/app/usdt"
+	"context"
 	"fmt"
-	"github.com/gin-gonic/gin"
 	"time"
+
+	"github.com/gin-gonic/gin"
 )
 
 // CreateTransaction 创建订单
@@ -41,8 +44,19 @@ func CreateTransaction(ctx *gin.Context) {
 		return
 	}
 
-	// 计算交易金额
-	address, _amount := model.CalcTradeAmount(wallet, rate, _money)
+	// 使用服务层计算交易金额
+	reqCtx := context.WithValue(ctx.Request.Context(), "request_id", help.GenerateTradeId())
+	
+	// 创建服务实例
+	repo := service.NewOrderRepository(model.DB)
+	amountSvc := service.NewAmountService(repo)
+	
+	address, _amount, err := amountSvc.CalcTradeAmountWithTimeout(wallet, rate, _money, 5*time.Second)
+	if err != nil {
+		log.Error("计算交易金额失败：", err.Error())
+		ctx.JSON(200, RespFailJson(fmt.Errorf("系统繁忙，请稍后重试")))
+		return
+	}
 
 	// 解析请求地址
 	var _host = "http://" + ctx.Request.Host
@@ -50,41 +64,40 @@ func CreateTransaction(ctx *gin.Context) {
 		_host = "https://" + ctx.Request.Host
 	}
 
-	// 创建交易订单
+	// 使用服务层创建交易订单
 	var _tradeId = help.GenerateTradeId()
 	var _expiredAt = time.Now().Add(config.GetExpireTime() * time.Second)
-	var _orderData = model.TradeOrders{
-		OrderId:     _orderId,
-		TradeId:     _tradeId,
-		TradeHash:   "", // 初始为空，等支付成功后再更新为实际交易哈希
-		UsdtRate:    fmt.Sprintf("%v", rate),
-		Amount:      _amount,
-		Money:       _money,
-		Chain:       address.Chain,
-		Address:     address.Address,
-		Status:      model.OrderStatusWaiting,
-		ReturnUrl:   _redirectUrl,
-		NotifyUrl:   _notifyUrl,
-		NotifyNum:   0,
-		NotifyState: model.OrderNotifyStateFail,
-		ExpiredAt:   _expiredAt,
+	
+	orderSvc := service.NewOrderService(repo, amountSvc)
+	createReq := service.CreateOrderRequest{
+		OrderID:   _orderId,
+		TradeID:   _tradeId,
+		Chain:     address.Chain,
+		Address:   address.Address,
+		Amount:    _amount,
+		Money:     _money,
+		UsdtRate:  fmt.Sprintf("%v", rate),
+		ReturnURL: _redirectUrl,
+		NotifyURL: _notifyUrl,
+		ExpiredAt: _expiredAt,
 	}
-	var res = model.DB.Create(&_orderData)
-	if res.Error != nil {
-		log.Error("订单创建失败：", res.Error.Error())
+	
+	order, err := orderSvc.CreateOrder(reqCtx, createReq)
+	if err != nil {
+		log.Error("订单创建失败：", err.Error())
 		ctx.JSON(200, RespFailJson(fmt.Errorf("订单创建失败")))
 		return
 	}
 
 	// 返回响应数据
 	ctx.JSON(200, RespSuccJson(gin.H{
-		"trade_id":        _tradeId,
-		"order_id":        _orderId,
-		"amount":          _money,
-		"actual_amount":   _amount,
-		"token":           address.Address,
-		"expiration_time": _expiredAt.Second(),
-		"payment_url":     fmt.Sprintf("%s/pay/checkout-counter/%s", config.GetAppUri(_host), _tradeId),
+		"trade_id":        order.TradeId,
+		"order_id":        order.OrderId,
+		"amount":          order.Money,
+		"actual_amount":   order.Amount,
+		"token":           order.Address,
+		"expiration_time": order.ExpiredAt.Unix(),
+		"payment_url":     fmt.Sprintf("%s/pay/checkout-counter/%s", config.GetAppUri(_host), order.TradeId),
 	}))
-	log.Info(fmt.Sprintf("订单创建成功，商户订单号：%s", _orderId))
+	log.Info(fmt.Sprintf("订单创建成功，商户订单号：%s，交易ID：%s", order.OrderId, order.TradeId))
 }

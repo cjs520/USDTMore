@@ -1,0 +1,5 @@
+# USDTMore/tests [USDTMore/tests.test]
+tests/extreme_concurrent_test.go:798:4: declared and not used: currentTotal
+tests/performance_regression_test.go:8:2: "database/sql" imported and not used
+FAIL	USDTMore/tests [build failed]
+FAIL
