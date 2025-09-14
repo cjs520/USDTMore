@@ -12,15 +12,21 @@ var botApi *tgbotapi.BotAPI
 var err error
 
 func init() {
+	// Telegram Bot初始化移到BotStart函数中，避免在没有配置token时panic
+}
+
+// InitBot 初始化Telegram Bot
+func InitBot() error {
 	var token = config.GetTGBotToken()
 	if token == "" {
-
-		return
+		log.Info("未配置Telegram Bot Token，跳过Bot初始化")
+		return nil
 	}
 
+	var err error
 	botApi, err = tgbotapi.NewBotAPI(token)
 	if err != nil {
-		panic("TG Bot NewBotAPI Error:" + err.Error())
+		return fmt.Errorf("TG Bot NewBotAPI Error: %w", err)
 	}
 
 	// 注册命令
@@ -32,10 +38,11 @@ func init() {
 		{Command: "/" + cmdOrder, Description: "最近订单"},
 	}...))
 	if err != nil {
-		panic("TG Bot Request Error:" + err.Error())
+		return fmt.Errorf("TG Bot Request Error: %w", err)
 	}
 
-	fmt.Println("Bot UserName: ", botApi.Self.UserName)
+	log.Info("Bot UserName: ", botApi.Self.UserName)
+	return nil
 }
 
 func GetBotApi() *tgbotapi.BotAPI {

@@ -1,70 +1,76 @@
-# Multi-architecture build support
-ARG TARGETPLATFORM
-ARG BUILDPLATFORM
-ARG TARGETOS
-ARG TARGETARCH
+# Multi-stage build for USDTMore
+FROM golang:1.23-alpine AS builder
 
-FROM golang:1.23 AS builder
+# Install build dependencies
+RUN apk add --no-cache git ca-certificates tzdata
 
-ENV GO111MODULE=on
-ENV CGO_ENABLED=0
-WORKDIR /go/release
+# Set working directory
+WORKDIR /build
+
+# Copy go mod files
+COPY go.mod go.sum ./
+
+# Download dependencies
+RUN go mod download
 
 # Copy source code
 COPY . .
 
-# Build for target architecture
-RUN set -x \
-    && echo "Building for native platform" \
-    && go build \
-        -trimpath \
-        -ldflags="-s -w -buildid=" \
-        -o usdtmore ./main
+# Build the application
+RUN CGO_ENABLED=0 GOOS=linux go build \
+    -a -installsuffix cgo \
+    -ldflags='-w -s -extldflags "-static"' \
+    -o usdtmore \
+    ./main
 
-FROM debian:bookworm-slim
-
-ENV DEBIAN_FRONTEND=noninteractive
-ENV DEBCONF_NOWARNINGS="yes"
-ENV TZ=Asia/Shanghai
-ENV HTML_DIR=/runtime
-
-COPY --from=builder /go/release/usdtmore /runtime/usdtmore
-COPY ./wait-for-db.sh /runtime/wait-for-db.sh
-
-ADD ./templates /runtime/templates
-ADD ./static /runtime/static
+# Final stage - use alpine for tools support
+FROM alpine:3.19
 
 # Install runtime dependencies
-RUN apt-get update && apt-get install -y --no-install-recommends \
-        tzdata \
-        ca-certificates \
-        curl \
-        postgresql-client \
-        netcat-openbsd \
-    && ln -fs /usr/share/zoneinfo/Asia/Shanghai /etc/localtime \
-    && dpkg-reconfigure -f noninteractive tzdata \
-    && apt-get clean \
-    && rm -rf /var/lib/apt/lists/* \
-    && rm -rf /tmp/* /var/tmp/*
+RUN apk add --no-cache \
+    ca-certificates \
+    tzdata \
+    curl \
+    netcat-openbsd \
+    bash \
+    postgresql-client \
+    && rm -rf /var/cache/apk/*
 
-# Create non-root user for security
-RUN groupadd -r usdtmore && useradd -r -g usdtmore usdtmore \
-    && chmod +x /runtime/wait-for-db.sh \
-    && chown -R usdtmore:usdtmore /runtime
+# Set timezone
+ENV TZ=Asia/Shanghai
+RUN ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && echo $TZ > /etc/timezone
+
+# Create non-root user
+RUN addgroup -g 1001 -S usdtmore && \
+    adduser -u 1001 -S usdtmore -G usdtmore
+
+# Copy the binary
+COPY --from=builder /build/usdtmore /app/usdtmore
+
+# Copy wait script and make it executable
+COPY --from=builder /build/wait-for-db.sh /app/wait-for-db.sh
+
+# Copy static files and templates
+COPY --from=builder /build/templates /app/templates
+COPY --from=builder /build/static /app/static
+
+# Set permissions
+RUN chmod +x /app/usdtmore /app/wait-for-db.sh && \
+    mkdir -p /app/logs && \
+    chown -R usdtmore:usdtmore /app
 
 # Switch to non-root user
 USER usdtmore
 
 # Set working directory
-WORKDIR /runtime
+WORKDIR /app
 
-# Health check - verify both HTTP service and database connectivity
+# Health check
 HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=3 \
-    CMD curl -f http://localhost:8080/api/health && \
-        pg_isready -h $DB_HOST -p $DB_PORT -U $DB_USER -d $DB_NAME || exit 1
+    CMD ["/app/usdtmore", "--health-check"]
 
 # Expose port
-EXPOSE 8080
+EXPOSE 6080
 
 # Start application
-CMD ["./usdtmore"]
+ENTRYPOINT ["/app/usdtmore"]

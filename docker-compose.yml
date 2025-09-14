@@ -6,17 +6,22 @@ services:
     container_name: usdtmore-postgres
     restart: always
     environment:
-      POSTGRES_DB: usdtmore
-      POSTGRES_USER: usdtmore
-      POSTGRES_PASSWORD: YOUR_DB_PASSWORD
-      PGTZ: Asia/Shanghai
+      POSTGRES_DB: ${DB_NAME:-usdtmore}
+      POSTGRES_USER: ${DB_USER:-usdtmore}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+      PGTZ: ${DB_TIMEZONE:-Asia/Shanghai}
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ./init.sql:/docker-entrypoint-initdb.d/init.sql
     ports:
-      - "5432:5432"
+      - "${DB_PORT:-5432}:5432"
     networks:
       - usdtmore-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-usdtmore} -d ${DB_NAME:-usdtmore}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
   usdtmore:
     build: .
@@ -25,50 +30,54 @@ services:
     ports:
       - "6080:6080"
     environment:
-      # 必需配置项
-      TG_BOT_TOKEN: "YOUR_TELEGRAM_BOT_TOKEN"
-      TG_BOT_ADMIN_ID: "YOUR_TELEGRAM_ADMIN_ID" 
+      # 🔒 安全配置（必需）
+      AUTH_TOKEN: ${AUTH_TOKEN}
       
-      # API Keys (必需)
-      ETHERSCAN_API_KEY: "YOUR_ETHERSCAN_API_KEY"    # EVM链统一API Key
-      TRON_SERVER_API: "https://apilist.tronscanapi.com/api/block"
-      TRON_SCAN_API_KEY: "YOUR_TRON_SCAN_API_KEY"     # TRON链API Key
-      SOLANA_API_KEY: "YOUR_SOLANA_API_KEY"          # Solana链API Key (可选)
+      # 🤖 Telegram Bot 配置（必需）
+      TG_BOT_TOKEN: ${TG_BOT_TOKEN}
+      TG_BOT_ADMIN_ID: ${TG_BOT_ADMIN_ID}
       
+      # 🔑 区块链API密钥配置（必需）
+      ETHERSCAN_API_KEY: ${ETHERSCAN_API_KEY}        # EVM链统一API密钥
+      TRON_GRID_API_KEY: ${TRON_GRID_API_KEY}        # TRON Grid API密钥
+      TRON_SCAN_API_KEY: ${TRON_SCAN_API_KEY:-}      # TRON Scan API密钥（可选）
+      TRON_SERVER_API: ${TRON_SERVER_API:-TRON_GRID}  # TRON服务器API类型
+      SOLANA_API_KEY: ${SOLANA_API_KEY:-}            # Solana API密钥（可选）
       
-      # 应用配置
-      AUTH_TOKEN: "YOUR_AUTH_TOKEN"
-      APP_URI: "https://your-domain.com"
-      REWRITE_HTTPS: "true"
+      # 🗄️ PostgreSQL 数据库配置
+      DB_TYPE: postgres
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_NAME: ${DB_NAME:-usdtmore}
+      DB_USER: ${DB_USER:-usdtmore}
+      DB_PASSWORD: ${DB_PASSWORD}
+      DB_SSLMODE: ${DB_SSLMODE:-disable}
+      DB_TIMEZONE: ${DB_TIMEZONE:-Asia/Shanghai}
       
-      # 网络配置
-      ETH_CONFIRMATION: "0"               # EVM链确认数
-      TRADE_IS_CONFIRMED: "0"             # TRON链是否需要确认
+      # 🌐 应用服务配置
+      LISTEN: ${LISTEN:-:6080}
+      APP_URI: ${APP_URI:-}
+      REWRITE_HTTPS: ${REWRITE_HTTPS:-false}
       
-      # 支付配置
-      PAYMENT_AMOUNT_RANGE: "0.01,99999"  # 支付金额范围
-      EXPIRE_TIME: "600"                  # 订单过期时间(秒) - 10分钟
+      # 💰 交易配置
+      EXPIRE_TIME: ${EXPIRE_TIME:-1800}              # 订单有效期（秒，默认30分钟）
+      USDT_RATE: ${USDT_RATE:-}                      # USDT汇率（留空自动获取）
+      TRADE_IS_CONFIRMED: ${TRADE_IS_CONFIRMED:-0}   # TRON网络是否需要确认
+      ETH_CONFIRMATION: ${ETH_CONFIRMATION:-0}       # ETH兼容网络确认块数
+      WALLET_ADDRESS: ${WALLET_ADDRESS:-}            # 启动时添加的钱包地址
       
-      # 可选：预设钱包地址
-      WALLET_ADDRESS: "TRON:YOUR_TRON_ADDRESS,BSC:YOUR_BSC_ADDRESS,POLY:YOUR_POLYGON_ADDRESS,OP:YOUR_OPTIMISM_ADDRESS"
+      # 🔧 高级配置（可选）
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      MAX_CONNECTIONS: ${MAX_CONNECTIONS:-100}
+      HTTP_TIMEOUT: ${HTTP_TIMEOUT:-30}
+      DB_MAX_CONNECTIONS: ${DB_MAX_CONNECTIONS:-10}
       
-      # 数据库配置
-      DB_TYPE: "postgres"
-      DB_HOST: "postgres"
-      DB_PORT: "5432"
-      DB_NAME: "usdtmore"
-      DB_USER: "usdtmore"
-      DB_PASSWORD: "YOUR_DB_PASSWORD"
-      DB_SSLMODE: "disable"
-      DB_TIMEZONE: "Asia/Shanghai"
-      
-      # Telegram通知配置 (可选)
-    #   TG_BOT_GROUP_ID: "你的群组ID"        # 交易通知群组
     command: ["./wait-for-db.sh", "postgres", "5432", "./usdtmore"]
     volumes:
-      - ./logs:/app/log                   # 日志持久化
+      - ./logs:/app/logs                             # 日志持久化
     depends_on:
-      - postgres
+      postgres:
+        condition: service_healthy
     networks:
       - usdtmore-network
     healthcheck:
@@ -80,6 +89,7 @@ services:
 
 volumes:
   postgres_data:
+    driver: local
 
 networks:
   usdtmore-network:

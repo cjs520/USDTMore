@@ -37,6 +37,15 @@ func Start() {
 		})
 	})
 
+	// 健康检查端点
+	r.GET("/api/health", func(c *gin.Context) {
+		c.JSON(200, gin.H{
+			"status":  "ok",
+			"version": "v2.1.0",
+			"time":    help.GetCurrentTime(),
+		})
+	})
+
 	// ==== 支付相关=====
 	payRoute := r.Group("/pay")
 	{

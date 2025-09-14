@@ -9,9 +9,15 @@ import (
 var err error
 
 func BotStart(version string) {
+	// 先初始化Bot
+	if err := telegram.InitBot(); err != nil {
+		log.Error("初始化Telegram Bot失败:", err)
+		return
+	}
+
 	var botApi = telegram.GetBotApi()
 	if botApi == nil {
-
+		log.Info("Telegram Bot未配置，跳过启动")
 		return
 	}
 

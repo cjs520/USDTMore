@@ -6,10 +6,8 @@ docker-compose.override.yml
 .env.production
 .env.staging
 
-# Database files
-*.db
-*.sqlite
-*.sqlite3
+# Database files (PostgreSQL only)
+# Note: SQLite support has been removed
 
 # Log files
 logs/

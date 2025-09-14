@@ -465,15 +465,7 @@ func GetOutputLog() string {
 	return runPath + "/usdtmore.log"
 }
 
-/*
-数据库路径
-*/
-func GetDbPath() string {
-	if data := help.GetEnv("DB_DIR"); data != "" {
-		return strings.TrimSpace(data) + "/usdtmore.db"
-	}
-	return runPath + "/usdtmore.db"
-}
+
 
 /*
 模版路径
@@ -524,7 +516,7 @@ func GetDBType() string {
 	if data := help.GetEnv("DB_TYPE"); data != "" {
 		return strings.TrimSpace(data)
 	}
-	return "sqlite" // 默认使用sqlite以保持向后兼容
+	return "postgres" // 默认使用PostgreSQL
 }
 
 /*

@@ -10,6 +10,24 @@ import (
 var DB *gorm.DB
 var _err error
 
+// HealthCheck 数据库健康检查
+func HealthCheck() error {
+	if DB == nil {
+		return fmt.Errorf("数据库连接未初始化")
+	}
+	
+	sqlDB, err := DB.DB()
+	if err != nil {
+		return fmt.Errorf("获取数据库连接失败: %w", err)
+	}
+	
+	if err := sqlDB.Ping(); err != nil {
+		return fmt.Errorf("数据库连接测试失败: %w", err)
+	}
+	
+	return nil
+}
+
 func Init() error {
 	dbType := config.GetDBType()
 
