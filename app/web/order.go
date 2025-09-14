@@ -7,8 +7,9 @@ import (
 	"USDTMore/app/model"
 	"USDTMore/app/usdt"
 	"fmt"
-	"github.com/gin-gonic/gin"
 	"time"
+
+	"github.com/gin-gonic/gin"
 )
 
 // CreateTransaction 创建订单
@@ -61,7 +62,7 @@ func CreateTransaction(ctx *gin.Context) {
 	var _orderData = model.TradeOrders{
 		OrderId:     _orderId,
 		TradeId:     _tradeId,
-		TradeHash:   "", // 初始为空，等支付成功后再更新为实际交易哈希
+		TradeHash:   _tradeId, // 使用TradeId作为初始值，避免空值冲突
 		UsdtRate:    fmt.Sprintf("%v", rate),
 		Amount:      _amount,
 		Money:       _money,

@@ -21,7 +21,7 @@ RUN CGO_ENABLED=0 GOOS=linux go build \
     -a -installsuffix cgo \
     -ldflags='-w -s -extldflags "-static"' \
     -o usdtmore \
-    ./main
+    .
 
 # Final stage - use alpine for tools support
 FROM alpine:3.19

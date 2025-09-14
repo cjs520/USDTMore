@@ -9,14 +9,15 @@ import (
 	"USDTMore/app/notify"
 	"USDTMore/app/telegram"
 	"fmt"
-	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
-	"github.com/shopspring/decimal"
-	"github.com/tidwall/gjson"
 	"math/big"
 	"net/url"
 	"strconv"
 	"strings"
 	"time"
+
+	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
+	"github.com/shopspring/decimal"
+	"github.com/tidwall/gjson"
 )
 
 // okX的智能合约地址
@@ -808,41 +809,41 @@ func getUsdtTransByETH(chain string, address string) (gjson.Result, error) {
 	case "POLY":
 		host = "https://api.etherscan.io/v2/api" // Polygon使用Etherscan V2 API
 		chainId = "137"                          // Polygon chainid
-		apiKey = config.GetPolygonScanApiKey()
+		apiKey = config.GetEtherscanApiKey()
 		if apiKey == "" {
-			return gjson.Result{}, fmt.Errorf("POLYGON_SCAN_API_KEY是必需的，请设置环境变量")
+			return gjson.Result{}, fmt.Errorf("ETHERSCAN_API_KEY是必需的，请设置环境变量")
 		}
 		contractAddress = config.GetPolygonScanContractAddress()
 	case "OP":
 		host = "https://api.etherscan.io/v2/api" // Optimism使用Etherscan V2 API
 		chainId = "10"                           // Optimism chainid
-		apiKey = config.GetOptimismExplorerApiKey()
+		apiKey = config.GetEtherscanApiKey()
 		if apiKey == "" {
-			return gjson.Result{}, fmt.Errorf("OPTIMISM_EXPLORER_API_KEY是必需的，请设置环境变量")
+			return gjson.Result{}, fmt.Errorf("ETHERSCAN_API_KEY是必需的，请设置环境变量")
 		}
 		contractAddress = config.GetOptimismExplorerContractAddress()
 	case "BSC":
 		host = "https://api.etherscan.io/v2/api" // BSC使用Etherscan V2 Multichain API
 		chainId = "56"                           // BSC chainid
-		apiKey = config.GetBscExplorerApiKey()
+		apiKey = config.GetEtherscanApiKey()
 		if apiKey == "" {
-			return gjson.Result{}, fmt.Errorf("BSC_SCAN_API_KEY是必需的，请设置环境变量")
+			return gjson.Result{}, fmt.Errorf("ETHERSCAN_API_KEY是必需的，请设置环境变量")
 		}
 		contractAddress = config.GetBscExplorerContractAddress()
 	case "ARB":
 		host = "https://api.etherscan.io/v2/api" // Arbitrum使用Etherscan V2 API
 		chainId = "42161"                        // Arbitrum One chainid
-		apiKey = config.GetArbitrumScanApiKey()
+		apiKey = config.GetEtherscanApiKey()
 		if apiKey == "" {
-			return gjson.Result{}, fmt.Errorf("ARBITRUM_SCAN_API_KEY是必需的，请设置环境变量")
+			return gjson.Result{}, fmt.Errorf("ETHERSCAN_API_KEY是必需的，请设置环境变量")
 		}
 		contractAddress = config.GetArbitrumContractAddress()
 	case "XLAYER":
 		host = "https://api.etherscan.io/v2/api" // X-Layer使用Etherscan V2 API
 		chainId = "196"                          // X-Layer chainid
-		apiKey = config.GetXLayerApiKey()
+		apiKey = config.GetEtherscanApiKey()
 		if apiKey == "" {
-			return gjson.Result{}, fmt.Errorf("XLAYER_SCAN_API_KEY是必需的，请设置环境变量")
+			return gjson.Result{}, fmt.Errorf("ETHERSCAN_API_KEY是必需的，请设置环境变量")
 		}
 		contractAddress = config.GetXLayerContractAddress()
 	default:

@@ -45,21 +45,19 @@ class USDTMoreController extends PayController
         ksort($parameter);
         reset($parameter); //内部指针指向数组中的第一个元素
         $sign = '';
-        $urls = '';
         foreach ($parameter as $key => $val) {
             if ($val == '') continue;
             if ($key != 'signature') {
                 if ($sign != '') {
                     $sign .= "&";
-                    $urls .= "&";
                 }
                 $sign .= "$key=$val"; //拼接为url参数形式
-                $urls .= "$key=" . urlencode($val); //拼接为url参数形式
             }
         }
-        $sign = md5($sign . $signKey);//密码追加进入开始MD5签名
-        return $sign;
+        // 使用HMAC-SHA256签名算法，与USDTMore保持一致
+        return hash_hmac('sha256', $sign, $signKey);
     }
+=======
 
     public function notifyUrl(Request $request)
     {

@@ -1,427 +1,483 @@
 #!/bin/bash
 
-# USDTMore 一键部署脚本
-# 支持 Docker 和手动部署两种方式
+# USDTMore 统一部署和管理脚本
+# 整合了所有功能：部署、修复、测试、构建等
 
-set -e  # 遇到错误立即退出
+set -e
 
 # 颜色定义
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
-PURPLE='\033[0;35m'
-CYAN='\033[0;36m'
 NC='\033[0m' # No Color
 
 # 日志函数
 log_info() {
-    echo -e "${GREEN}[INFO]${NC} $1"
+    echo -e "${BLUE}ℹ️  $1${NC}"
 }
 
-log_warn() {
-    echo -e "${YELLOW}[WARN]${NC} $1"
+log_success() {
+    echo -e "${GREEN}✅ $1${NC}"
+}
+
+log_warning() {
+    echo -e "${YELLOW}⚠️  $1${NC}"
 }
 
 log_error() {
-    echo -e "${RED}[ERROR]${NC} $1"
+    echo -e "${RED}❌ $1${NC}"
 }
 
-log_step() {
-    echo -e "${BLUE}[STEP]${NC} $1"
+# 生成随机字符串函数
+generate_random_string() {
+    openssl rand -hex 16
 }
 
-# 检查命令是否存在
-check_command() {
-    if ! command -v $1 &> /dev/null; then
-        log_error "$1 命令未找到，请先安装 $1"
-        return 1
-    fi
-    return 0
+# 等待数据库函数
+wait_for_database() {
+    local host=${1:-localhost}
+    local port=${2:-5432}
+    local timeout=${3:-30}
+    
+    log_info "等待数据库 $host:$port 启动..."
+    
+    for i in $(seq 1 $timeout); do
+        if nc -z "$host" "$port" > /dev/null 2>&1; then
+            log_success "数据库 $host:$port 已就绪！"
+            return 0
+        fi
+        
+        if [ $i -eq $timeout ]; then
+            log_error "等待数据库 $host:$port 超时 ($timeout 秒)"
+            return 1
+        fi
+        
+        echo "等待数据库启动... ($i/$timeout)"
+        sleep 1
+    done
 }
 
-# 检查系统要求
-check_system() {
-    log_step "检查系统环境..."
+# 检查Docker环境
+check_docker() {
+    log_info "检查Docker环境..."
     
-    # 检查操作系统
-    if [[ "$OSTYPE" == "linux-gnu"* ]]; then
-        log_info "检测到 Linux 系统"
-    elif [[ "$OSTYPE" == "darwin"* ]]; then
-        log_info "检测到 macOS 系统"
-    else
-        log_warn "未知操作系统: $OSTYPE"
-    fi
-    
-    # 检查架构
-    ARCH=$(uname -m)
-    log_info "系统架构: $ARCH"
-    
-    # 检查内存
-    if command -v free &> /dev/null; then
-        MEMORY=$(free -m | awk 'NR==2{printf "%.1fGB", $2/1024}')
-        log_info "系统内存: $MEMORY"
-    fi
-}
-
-# 安装 Docker 和 Docker Compose
-install_docker() {
-    log_step "安装 Docker 和 Docker Compose..."
-    
-    if command -v docker &> /dev/null && command -v docker-compose &> /dev/null; then
-        log_info "Docker 和 Docker Compose 已安装"
-        return 0
-    fi
-    
-    # 检测系统类型并安装 Docker
-    if [[ -f /etc/debian_version ]]; then
-        # Debian/Ubuntu
-        log_info "检测到 Debian/Ubuntu 系统，安装 Docker..."
-        sudo apt update
-        sudo apt install -y apt-transport-https ca-certificates curl gnupg lsb-release
-        
-        # 添加 Docker 官方 GPG 密钥
-        curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo gpg --dearmor -o /usr/share/keyrings/docker-archive-keyring.gpg
-        
-        # 添加 Docker 仓库
-        echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/docker-archive-keyring.gpg] https://download.docker.com/linux/ubuntu $(lsb_release -cs) stable" | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
-        
-        # 安装 Docker
-        sudo apt update
-        sudo apt install -y docker-ce docker-ce-cli containerd.io docker-compose-plugin
-        
-        # 安装 Docker Compose
-        sudo curl -L "https://github.com/docker/compose/releases/latest/download/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
-        sudo chmod +x /usr/local/bin/docker-compose
-        
-    elif [[ -f /etc/redhat-release ]]; then
-        # CentOS/RHEL/Fedora
-        log_info "检测到 RedHat 系列系统，安装 Docker..."
-        sudo yum install -y yum-utils
-        sudo yum-config-manager --add-repo https://download.docker.com/linux/centos/docker-ce.repo
-        sudo yum install -y docker-ce docker-ce-cli containerd.io docker-compose-plugin
-        
-        # 安装 Docker Compose
-        sudo curl -L "https://github.com/docker/compose/releases/latest/download/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
-        sudo chmod +x /usr/local/bin/docker-compose
-        
-    else
-        log_error "不支持的系统类型，请手动安装 Docker"
+    if ! command -v docker &> /dev/null; then
+        log_error "Docker 未安装，请先安装 Docker"
         exit 1
     fi
-    
-    # 启动 Docker 服务
-    sudo systemctl start docker
-    sudo systemctl enable docker
-    
-    # 添加当前用户到 docker 组
-    sudo usermod -aG docker $USER
-    
-    log_info "Docker 安装完成，请重新登录以使用 Docker"
-}
 
-# 安装 PostgreSQL
-install_postgresql() {
-    log_step "安装 PostgreSQL..."
-    
-    if command -v psql &> /dev/null; then
-        log_info "PostgreSQL 已安装"
-        return 0
-    fi
-    
-    if [[ -f /etc/debian_version ]]; then
-        # Debian/Ubuntu
-        sudo apt update
-        sudo apt install -y postgresql postgresql-contrib
-    elif [[ -f /etc/redhat-release ]]; then
-        # CentOS/RHEL/Fedora
-        sudo yum install -y postgresql-server postgresql-contrib
-        sudo postgresql-setup initdb
-    else
-        log_error "不支持的系统类型，请手动安装 PostgreSQL"
+    if ! command -v docker-compose &> /dev/null; then
+        log_error "Docker Compose 未安装，请先安装 Docker Compose"
         exit 1
     fi
-    
-    # 启动 PostgreSQL 服务
-    sudo systemctl start postgresql
-    sudo systemctl enable postgresql
-    
-    log_info "PostgreSQL 安装完成"
-}
 
-# 配置数据库
-setup_database() {
-    log_step "配置数据库..."
-    
-    # 读取配置
-    DB_NAME=${DB_NAME:-usdtmore}
-    DB_USER=${DB_USER:-usdtmore}
-    DB_PASSWORD=${DB_PASSWORD:-$(openssl rand -base64 32)}
-    
-    log_info "数据库名称: $DB_NAME"
-    log_info "数据库用户: $DB_USER"
-    log_info "数据库密码: $DB_PASSWORD"
-    
-    # 创建数据库和用户
-    sudo -u postgres psql << EOF
-CREATE DATABASE $DB_NAME;
-CREATE USER $DB_USER WITH ENCRYPTED PASSWORD '$DB_PASSWORD';
-GRANT ALL PRIVILEGES ON DATABASE $DB_NAME TO $DB_USER;
-ALTER USER $DB_USER CREATEDB;
-\q
-EOF
-    
-    log_info "数据库配置完成"
+    log_success "Docker 环境检查通过"
 }
 
 # 生成配置文件
 generate_config() {
-    log_step "生成配置文件..."
-    
-    if [[ ! -f .env ]]; then
-        if [[ -f .env.example ]]; then
-            cp .env.example .env
-            log_info "已从 .env.example 复制配置文件"
-        else
-            log_error ".env.example 文件不存在"
-            exit 1
-        fi
-    else
-        log_info "配置文件 .env 已存在"
+    if [ -f ".env" ]; then
+        log_warning ".env 文件已存在，跳过配置文件生成"
+        log_info "如需重新生成配置，请删除现有 .env 文件"
+        return 0
     fi
     
-    # 生成随机令牌
-    if [[ -z "$AUTH_TOKEN" ]]; then
-        AUTH_TOKEN=$(openssl rand -base64 32 | tr -d "=+/" | cut -c1-32)
-        log_info "生成认证令牌: $AUTH_TOKEN"
-    fi
-    
-    # 更新配置文件中的占位符
-    if [[ "$OSTYPE" == "darwin"* ]]; then
-        # macOS
-        sed -i '' "s/your_32_char_secure_token_here_change_me/$AUTH_TOKEN/g" .env
-        sed -i '' "s/your_secure_db_password_change_me/$DB_PASSWORD/g" .env
-    else
-        # Linux
-        sed -i "s/your_32_char_secure_token_here_change_me/$AUTH_TOKEN/g" .env
-        sed -i "s/your_secure_db_password_change_me/$DB_PASSWORD/g" .env
-    fi
-    
-    log_warn "请编辑 .env 文件，设置以下必需参数："
-    echo -e "${CYAN}  - TG_BOT_TOKEN${NC}: Telegram Bot 令牌"
-    echo -e "${CYAN}  - TG_BOT_ADMIN_ID${NC}: Telegram 管理员 ID"
-    echo -e "${CYAN}  - ETHERSCAN_API_KEY${NC}: EVM 链 API 密钥"
-    echo -e "${CYAN}  - TRON_GRID_API_KEY${NC}: TRON Grid API 密钥"
-    echo ""
-    
-    read -p "是否现在编辑配置文件？(y/n): " -n 1 -r
-    echo
-    if [[ $REPLY =~ ^[Yy]$ ]]; then
-        ${EDITOR:-nano} .env
-    fi
+    log_info "生成配置文件..."
+
+    cat > .env << EOF
+# 数据库配置
+DB_HOST=postgres
+DB_PORT=5432
+DB_USER=usdtmore
+DB_PASSWORD=$(generate_random_string)
+DB_NAME=usdtmore
+DB_SSLMODE=disable
+
+# 应用配置
+APP_PORT=6080
+APP_SECRET=$(generate_random_string)
+
+# JWT配置
+JWT_SECRET=$(generate_random_string)
+
+# 管理员认证令牌
+ADMIN_TOKEN=$(generate_random_string)
+API_TOKEN=$(generate_random_string)
+
+# EVM API配置 (统一使用Etherscan API)
+ETHERSCAN_API_KEY=YourEtherscanApiKey
+
+# 支付配置
+PAYMENT_TIMEOUT=1800
+MIN_AMOUNT=1.0
+MAX_AMOUNT=10000.0
+
+# 监控配置
+MONITOR_INTERVAL=30
+CLEANUP_INTERVAL=3600
+EOF
+
+    log_success "配置文件已生成"
 }
 
-# Docker 部署
-deploy_docker() {
-    log_step "使用 Docker 部署..."
+# 测试API配置
+test_api_config() {
+    log_info "测试 EVM API 配置..."
     
-    # 检查 Docker
-    if ! check_command docker || ! check_command docker-compose; then
-        log_warn "Docker 未安装，正在安装..."
-        install_docker
-        log_warn "请重新登录后再次运行此脚本"
-        exit 0
+    # 加载环境变量
+    if [ -f ".env" ]; then
+        source .env
     fi
     
-    # 生成配置文件
-    generate_config
+    # 检查环境变量
+    if [ -z "$ETHERSCAN_API_KEY" ] || [ "$ETHERSCAN_API_KEY" = "YourEtherscanApiKey" ]; then
+        log_error "ETHERSCAN_API_KEY 未设置或使用默认值"
+        log_info "请在 .env 文件中设置: ETHERSCAN_API_KEY=your_api_key"
+        return 1
+    else
+        log_success "ETHERSCAN_API_KEY 已设置"
+    fi
+
+    # 测试API密钥有效性
+    log_info "测试 Etherscan API..."
+    response=$(curl -s "https://api.etherscan.io/api?module=stats&action=ethsupply&apikey=$ETHERSCAN_API_KEY")
+
+    if echo "$response" | grep -q "OK"; then
+        log_success "Etherscan API 密钥有效"
+    else
+        log_error "Etherscan API 密钥无效或有问题"
+        echo "响应: $response"
+        return 1
+    fi
+
+    # 测试 Etherscan V2 API (多链支持)
+    log_info "测试 Etherscan V2 API (BSC)..."
+    v2_response=$(curl -s "https://api.etherscan.io/v2/api?chainid=56&module=stats&action=bnbsupply&apikey=$ETHERSCAN_API_KEY")
+
+    if echo "$v2_response" | grep -q "OK"; then
+        log_success "Etherscan V2 API (多链) 密钥有效"
+    else
+        log_warning "Etherscan V2 API 可能有问题"
+        echo "响应: $v2_response"
+    fi
+
+    log_success "API 配置测试完成"
+}
+
+# 构建项目
+build_project() {
+    log_info "构建项目..."
     
-    # 构建和启动服务
+    # 清理文件
+    find . -name ".DS_Store" -exec rm -f {} \; 2>/dev/null || true
+    rm -rf out 2>/dev/null || true
+    
+    # 如果是Debian包构建
+    if [ -d "debian" ]; then
+        chmod 755 debian/*.ex 2>/dev/null || true
+        cp debian/postinst.ex debian/postinst 2>/dev/null || true
+        cp debian/postrm.ex debian/postrm 2>/dev/null || true
+        chmod 755 debian/postinst 2>/dev/null || true
+        chmod 755 debian/postrm 2>/dev/null || true
+        
+        if command -v debuild &> /dev/null; then
+            debuild -us -uc
+        else
+            log_warning "debuild 未安装，跳过Debian包构建"
+        fi
+    fi
+    
+    # Docker构建
     log_info "构建 Docker 镜像..."
     docker-compose build
     
-    log_info "启动服务..."
+    log_success "项目构建完成"
+}
+
+# 初始化数据库
+init_database() {
+    log_info "初始化数据库..."
+    
+    if [ -f "init.sql" ]; then
+        if docker-compose exec -T postgres psql -U usdtmore -d usdtmore < init.sql; then
+            log_success "数据库初始化完成"
+        else
+            log_error "数据库初始化失败"
+            return 1
+        fi
+    else
+        log_warning "init.sql 文件不存在，跳过数据库初始化"
+    fi
+}
+
+# 快速修复
+quick_fix() {
+    log_info "执行快速修复..."
+    
+    # 检查服务状态
+    if ! docker-compose ps | grep -q "Up"; then
+        log_info "启动Docker服务..."
+        docker-compose up -d
+        sleep 10
+    fi
+    
+    # 重启应用
+    log_info "重启应用服务..."
+    docker-compose restart usdtmore
+    
+    # 等待服务启动
+    sleep 5
+    
+    # 检查日志中的错误
+    log_info "检查应用日志..."
+    if docker-compose logs --tail=10 usdtmore | grep -E "(ERROR|ERRO|error|panic)"; then
+        log_warning "发现应用错误，请检查日志"
+    else
+        log_success "应用运行正常"
+    fi
+    
+    log_success "快速修复完成"
+}
+
+# 并发订单修复
+fix_concurrent_orders() {
+    log_info "开始修复并发订单创建问题..."
+
+    # 检查Docker服务状态
+    if ! docker-compose ps | grep -q "Up"; then
+        log_warning "Docker服务未运行，启动服务..."
+        docker-compose up -d
+        sleep 10
+    fi
+
+    # 备份数据库（可选但推荐）
+    log_info "创建数据库备份..."
+    if docker-compose exec -T postgres pg_dump -U usdtmore -d usdtmore > backup_before_concurrent_fix_$(date +%Y%m%d_%H%M%S).sql; then
+        log_success "数据库备份完成"
+    else
+        log_warning "数据库备份失败，继续执行修复..."
+    fi
+
+    # 执行数据库修复
+    log_info "执行数据库结构修复..."
+    if [ -f "fix_concurrent_final.sql" ]; then
+        if docker-compose exec -T postgres psql -U usdtmore -d usdtmore < fix_concurrent_final.sql; then
+            log_success "数据库修复完成"
+        else
+            log_error "数据库修复失败"
+            return 1
+        fi
+    else
+        log_warning "fix_concurrent_final.sql 文件不存在，跳过数据库修复"
+    fi
+
+    # 重启应用以应用代码更改
+    log_info "重启应用服务..."
+    docker-compose restart usdtmore
+
+    # 等待应用启动
+    log_info "等待应用启动..."
+    sleep 15
+
+    # 测试并发订单创建
+    log_info "测试并发订单创建..."
+    test_concurrent_orders
+
+    log_success "并发订单修复完成！"
+}
+
+# 测试并发订单
+test_concurrent_orders() {
+    log_info "开始并发测试..."
+    
+    # 并发测试函数
+    test_order_creation() {
+        local order_id="test_order_$(date +%s)_$1"
+        local response=$(curl -s -X POST http://localhost:6080/api/create_order \
+            -H "Content-Type: application/json" \
+            -d "{
+                \"order_id\": \"$order_id\",
+                \"money\": 10.00,
+                \"notify_url\": \"http://example.com/notify\",
+                \"return_url\": \"http://example.com/return\"
+            }")
+        
+        if echo "$response" | grep -q "success"; then
+            log_success "订单 $order_id 创建成功"
+            return 0
+        else
+            log_error "订单 $order_id 创建失败: $response"
+            return 1
+        fi
+    }
+
+    # 并发创建5个订单
+    for i in {1..5}; do
+        test_order_creation $i &
+    done
+
+    # 等待所有后台任务完成
+    wait
+
+    log_success "并发测试完成"
+}
+
+# 重启和修复服务
+restart_and_fix() {
+    log_info "重启和修复服务..."
+    
+    # 停止所有服务
+    log_info "停止现有服务..."
+    docker-compose down
+    
+    # 清理Docker资源
+    log_info "清理Docker资源..."
+    docker system prune -f
+    
+    # 重新构建和启动
+    log_info "重新构建和启动服务..."
+    docker-compose build --no-cache
     docker-compose up -d
     
     # 等待服务启动
-    log_info "等待服务启动..."
-    sleep 10
+    sleep 15
+    wait_for_database postgres 5432
+    
+    # 初始化数据库
+    init_database
     
     # 检查服务状态
     log_info "检查服务状态..."
     docker-compose ps
     
-    # 显示日志
-    log_info "显示服务日志..."
-    docker-compose logs --tail=50
-    
-    log_info "Docker 部署完成！"
-    log_info "访问地址: http://localhost:6080"
+    log_success "重启和修复完成"
 }
 
-# 手动部署
-deploy_manual() {
-    log_step "手动部署..."
+# 完整部署
+deploy() {
+    log_info "🚀 开始部署 USDTMore..."
     
-    # 安装 PostgreSQL
-    install_postgresql
-    
-    # 配置数据库
-    setup_database
-    
-    # 生成配置文件
+    check_docker
     generate_config
+    build_project
     
-    # 下载应用程序
-    log_info "下载应用程序..."
-    ARCH=$(uname -m)
-    case $ARCH in
-        x86_64)
-            BINARY_ARCH="amd64"
-            ;;
-        aarch64|arm64)
-            BINARY_ARCH="arm64"
-            ;;
-        *)
-            log_error "不支持的架构: $ARCH"
-            exit 1
-            ;;
-    esac
+    log_info "启动服务..."
+    docker-compose up -d
     
-    BINARY_NAME="usdtmore-linux-$BINARY_ARCH"
-    DOWNLOAD_URL="https://github.com/cjs520/USDTMore/releases/latest/download/$BINARY_NAME"
+    # 等待数据库启动
+    sleep 10
+    wait_for_database postgres 5432
     
-    if [[ ! -f $BINARY_NAME ]]; then
-        log_info "从 $DOWNLOAD_URL 下载..."
-        curl -L -o $BINARY_NAME $DOWNLOAD_URL
-        chmod +x $BINARY_NAME
-    else
-        log_info "应用程序已存在: $BINARY_NAME"
+    init_database
+    
+    # 检查服务状态
+    log_info "检查服务状态..."
+    docker-compose ps
+    
+    # 显示访问信息
+    display_info
+    
+    log_success "🎉 USDTMore 部署完成！"
+}
+
+# 显示访问信息
+display_info() {
+    echo ""
+    log_success "🎉 USDTMore 服务信息："
+    echo ""
+    echo "📋 服务信息："
+    echo "- 应用地址: http://localhost:6080"
+    
+    if [ -f ".env" ]; then
+        echo "- 管理员令牌: $(grep ADMIN_TOKEN .env | cut -d'=' -f2)"
+        echo "- API令牌: $(grep API_TOKEN .env | cut -d'=' -f2)"
     fi
     
-    # 创建系统服务
-    if [[ -f docs/usdtmore.service ]]; then
-        log_info "安装系统服务..."
-        sudo cp docs/usdtmore.service /etc/systemd/system/
-        
-        # 更新服务文件中的路径
-        sudo sed -i "s|/path/to/usdtmore|$(pwd)/$BINARY_NAME|g" /etc/systemd/system/usdtmore.service
-        sudo sed -i "s|/path/to/workdir|$(pwd)|g" /etc/systemd/system/usdtmore.service
-        
-        # 重新加载 systemd
-        sudo systemctl daemon-reload
-        sudo systemctl enable usdtmore
-        sudo systemctl start usdtmore
-        
-        log_info "系统服务已启动"
-        sudo systemctl status usdtmore --no-pager
-    else
-        log_warn "未找到服务文件，手动启动应用..."
-        ./$BINARY_NAME &
-        log_info "应用已在后台启动"
-    fi
-    
-    log_info "手动部署完成！"
-    log_info "访问地址: http://localhost:6080"
+    echo ""
+    echo "📝 重要提醒："
+    echo "1. 请修改 .env 文件中的 ETHERSCAN_API_KEY"
+    echo "2. 请妥善保管管理员令牌和API令牌"
+    echo "3. 生产环境请修改默认密码"
+    echo ""
+    echo "🔗 常用命令："
+    echo "- 查看日志: docker-compose logs -f"
+    echo "- 重启服务: docker-compose restart"
+    echo "- 停止服务: docker-compose down"
+    echo ""
+    echo "🛠️  管理命令："
+    echo "- 快速修复: $0 fix"
+    echo "- 测试API: $0 test-api"
+    echo "- 并发修复: $0 fix-concurrent"
+    echo "- 重启修复: $0 restart-fix"
+    echo "- 重新部署: $0 deploy"
 }
 
 # 显示帮助信息
 show_help() {
-    echo -e "${PURPLE}USDTMore 一键部署脚本${NC}"
+    echo "USDTMore 统一管理脚本"
     echo ""
-    echo "用法: $0 [选项]"
+    echo "用法: $0 [命令]"
     echo ""
-    echo "选项:"
-    echo "  -d, --docker     使用 Docker 部署（推荐）"
-    echo "  -m, --manual     手动部署"
-    echo "  -c, --check      仅检查系统环境"
-    echo "  -h, --help       显示此帮助信息"
+    echo "命令:"
+    echo "  deploy          完整部署 (默认)"
+    echo "  build           构建项目"
+    echo "  fix             快速修复"
+    echo "  fix-concurrent  修复并发订单问题"
+    echo "  restart-fix     重启和修复服务"
+    echo "  test-api        测试API配置"
+    echo "  test-concurrent 测试并发订单"
+    echo "  init-db         初始化数据库"
+    echo "  info            显示服务信息"
+    echo "  help            显示此帮助信息"
     echo ""
     echo "示例:"
-    echo "  $0 --docker      # Docker 部署"
-    echo "  $0 --manual      # 手动部署"
-    echo "  $0 --check       # 检查环境"
-    echo ""
+    echo "  $0              # 完整部署"
+    echo "  $0 deploy       # 完整部署"
+    echo "  $0 fix          # 快速修复"
+    echo "  $0 test-api     # 测试API配置"
+    echo "  $0 restart-fix  # 重启和修复"
 }
 
 # 主函数
 main() {
-    echo -e "${PURPLE}"
-    echo "=================================================="
-    echo "         USDTMore 一键部署脚本 v2.1.0"
-    echo "=================================================="
-    echo -e "${NC}"
-    
-    # 检查参数
-    case "${1:-}" in
-        -d|--docker)
-            check_system
-            deploy_docker
+    case "${1:-deploy}" in
+        "deploy")
+            deploy
             ;;
-        -m|--manual)
-            check_system
-            deploy_manual
+        "build")
+            build_project
             ;;
-        -c|--check)
-            check_system
-            log_info "系统检查完成"
+        "fix")
+            quick_fix
             ;;
-        -h|--help)
+        "fix-concurrent")
+            fix_concurrent_orders
+            ;;
+        "restart-fix")
+            restart_and_fix
+            ;;
+        "test-api")
+            test_api_config
+            ;;
+        "test-concurrent")
+            test_concurrent_orders
+            ;;
+        "init-db")
+            init_database
+            ;;
+        "info")
+            display_info
+            ;;
+        "help"|"-h"|"--help")
             show_help
             ;;
-        "")
-            # 无参数时显示交互式菜单
-            echo "请选择部署方式:"
-            echo "1) Docker 部署（推荐）"
-            echo "2) 手动部署"
-            echo "3) 仅检查系统环境"
-            echo "4) 显示帮助"
-            echo ""
-            read -p "请输入选择 (1-4): " choice
-            
-            case $choice in
-                1)
-                    check_system
-                    deploy_docker
-                    ;;
-                2)
-                    check_system
-                    deploy_manual
-                    ;;
-                3)
-                    check_system
-                    log_info "系统检查完成"
-                    ;;
-                4)
-                    show_help
-                    ;;
-                *)
-                    log_error "无效选择"
-                    exit 1
-                    ;;
-            esac
-            ;;
         *)
-            log_error "未知参数: $1"
+            log_error "未知命令: $1"
             show_help
             exit 1
             ;;
     esac
-    
-    echo ""
-    echo -e "${GREEN}=================================================="
-    echo "                 部署完成！"
-    echo "=================================================="
-    echo -e "${NC}"
-    echo "🎉 USDTMore 已成功部署！"
-    echo ""
-    echo "📋 接下来的步骤："
-    echo "1. 编辑 .env 文件，设置必需的 API 密钥"
-    echo "2. 重启服务以应用配置更改"
-    echo "3. 访问 http://localhost:6080 开始使用"
-    echo ""
-    echo "📚 更多信息请查看 README.md"
-    echo "🆘 如需帮助，请访问: https://github.com/cjs520/USDTMore"
 }
 
 # 执行主函数

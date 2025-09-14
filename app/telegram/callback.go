@@ -465,8 +465,25 @@ func requestAddress(baseUrl string, query string) []byte {
 }
 
 func getWalletInfoETH(name string, unit string, chain string, host string, apiKey string, contractAddress string, address string) string {
+	// 获取链ID用于Etherscan V2 API
+	var chainId string
+	switch chain {
+	case "POLY":
+		chainId = "137" // Polygon
+	case "OP":
+		chainId = "10" // Optimism
+	case "BSC":
+		chainId = "56" // BSC
+	case "ARB":
+		chainId = "42161" // Arbitrum One
+	case "XLAYER":
+		chainId = "196" // X-Layer
+	default:
+		chainId = "1" // Ethereum mainnet
+	}
+
 	// 这里计算的是ETH余额
-	var queryETH = "module=account&action=balance&address=" + address + "&apikey=" + apiKey
+	var queryETH = "chainid=" + chainId + "&module=account&action=balance&address=" + address + "&apikey=" + apiKey
 	allETH := requestAddress(host, queryETH)
 	resultETH := gjson.ParseBytes(allETH)
 
@@ -479,7 +496,7 @@ func getWalletInfoETH(name string, unit string, chain string, host string, apiKe
 	//
 
 	// 这里计算的是ERC-20余额
-	var queryUSDT = "module=account&action=tokenbalance&contractaddress=" + contractAddress + "&address=" + address + "&tag=latest" + "&apikey=" + apiKey
+	var queryUSDT = "chainid=" + chainId + "&module=account&action=tokenbalance&contractaddress=" + contractAddress + "&address=" + address + "&tag=latest" + "&apikey=" + apiKey
 	allUSDT := requestAddress(host, queryUSDT)
 	resultUSDT := gjson.ParseBytes(allUSDT)
 
@@ -510,7 +527,7 @@ func getWalletInfoETH(name string, unit string, chain string, host string, apiKe
 	var text = ""
 	if model.DB.Where("chain = ? and address = ?", chain, address).First(&wa).Error == nil {
 		// 这里查询订单历史
-		var queryTx = "module=account&action=tokentx&contractaddress=" + contractAddress + "&address=" + address + "&startblock=" + strconv.FormatInt(wa.StartBlock+1, 10) + "&endblock=" + strconv.FormatInt(wa.StartBlock+999999999999, 10) + "&sort=asc" + "&apikey=" + apiKey
+		var queryTx = "chainid=" + chainId + "&module=account&action=tokentx&contractaddress=" + contractAddress + "&address=" + address + "&startblock=" + strconv.FormatInt(wa.StartBlock+1, 10) + "&endblock=" + strconv.FormatInt(wa.StartBlock+999999999999, 10) + "&sort=asc" + "&apikey=" + apiKey
 		allTx := requestAddress(host, queryTx)
 		resultTx := gjson.ParseBytes(allTx)
 
@@ -596,19 +613,19 @@ func getWalletInfoETH(name string, unit string, chain string, host string, apiKe
 获取Polygon的信息
 */
 func getWalletInfoByPOLAddress(address string) string {
-	return getWalletInfoETH("Polygon", "MATIC", "POLY", "https://api.polygonscan.com/api", config.GetPolygonScanApiKey(), config.GetPolygonScanContractAddress(), address)
+	return getWalletInfoETH("Polygon", "MATIC", "POLY", "https://api.etherscan.io/v2/api", config.GetEtherscanApiKey(), config.GetPolygonScanContractAddress(), address)
 }
 
 /*
 获取Optimism的信息
 */
 func getWalletInfoByOPTAddress(address string) string {
-	return getWalletInfoETH("Optimism", "ETH", "OP", "https://api-optimistic.etherscan.io/api", config.GetOptimismExplorerApiKey(), config.GetOptimismExplorerContractAddress(), address)
+	return getWalletInfoETH("Optimism", "ETH", "OP", "https://api.etherscan.io/v2/api", config.GetEtherscanApiKey(), config.GetOptimismExplorerContractAddress(), address)
 }
 
 /*
 获取BEP20的信息
 */
 func getWalletInfoByBSCAddress(address string) string {
-	return getWalletInfoETH("BEP20", "BNB", "BSC", "https://api.bscscan.com/api", config.GetBscExplorerApiKey(), config.GetBscExplorerContractAddress(), address)
+	return getWalletInfoETH("BEP20", "BNB", "BSC", "https://api.etherscan.io/v2/api", config.GetEtherscanApiKey(), config.GetBscExplorerContractAddress(), address)
 }

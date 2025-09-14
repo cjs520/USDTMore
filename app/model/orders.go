@@ -2,11 +2,12 @@ package model
 
 import (
 	"fmt"
-	"github.com/shopspring/decimal"
-	"gorm.io/gorm"
 	"strconv"
 	"sync"
 	"time"
+
+	"github.com/shopspring/decimal"
+	"gorm.io/gorm"
 )
 
 const OrderStatusExpired = 3
@@ -23,7 +24,7 @@ type TradeOrders struct {
 	Id          int64     `gorm:"primary_key;AUTO_INCREMENT;comment:id"`
 	OrderId     string    `gorm:"type:varchar(255);not null;unique;color:blue;comment:客户订单ID"`
 	TradeId     string    `gorm:"type:varchar(255);not null;unique;color:blue;comment:本地订单ID"`
-	TradeHash   string    `gorm:"type:varchar(66);default:'';unique;comment:交易哈希"`
+	TradeHash   string    `gorm:"type:varchar(128);default:'';comment:交易哈希"`
 	UsdtRate    string    `gorm:"type:varchar(10);not null;comment:USDT汇率"`
 	Amount      string    `gorm:"type:decimal(10,2);not null;default:0;comment:USDT交易数额"`
 	Money       float64   `gorm:"type:decimal(10,2);not null;default:0;comment:订单交易金额"`
@@ -214,7 +215,7 @@ func CalcTradeAmount(wa []WalletAddress, rate, money float64) (WalletAddress, st
 	}
 
 	// 设置最大尝试次数，防止无限循环
-	const maxAttempts = 10000
+	const maxAttempts = 100000
 	for attempt := 0; attempt < maxAttempts; attempt++ {
 		for _, address := range wa {
 			// 使用标准化的金额格式进行Key匹配

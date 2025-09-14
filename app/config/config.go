@@ -3,13 +3,14 @@ package config
 import (
 	"USDTMore/app/help"
 	"fmt"
-	"github.com/shopspring/decimal"
 	"os"
 	"path/filepath"
 	"regexp"
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/shopspring/decimal"
 )
 
 const defaultExpireTime = 600         // 订单默认有效期 10分钟
@@ -465,8 +466,6 @@ func GetOutputLog() string {
 	return runPath + "/usdtmore.log"
 }
 
-
-
 /*
 模版路径
 */
@@ -474,7 +473,7 @@ func GetTemplatePath() string {
 	if data := help.GetEnv("HTML_DIR"); data != "" {
 		return strings.TrimSpace(data) + "/templates/*"
 	}
-	return runPath + "/../templates/*"
+	return runPath + "/templates/*"
 }
 
 /*
@@ -484,7 +483,7 @@ func GetStaticPath() string {
 	if data := help.GetEnv("HTML_DIR"); data != "" {
 		return strings.TrimSpace(data) + "/static/"
 	}
-	return runPath + "/../static/"
+	return runPath + "/static/"
 }
 
 /*

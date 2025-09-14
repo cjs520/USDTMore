@@ -25,7 +25,7 @@ class Signature implements \App\Pay\Signature
             $sign .= $k . '=' . $v . '&';
         }
         $sign = trim($sign, '&');
-        return md5($sign . $key);
+        return hash_hmac('sha256', $sign, $key);
     }
 
     /**
