@@ -21,9 +21,9 @@ func CreateTestOrder(customFields ...map[string]interface{}) *model.TradeOrders 
 		OrderId:     fmt.Sprintf("TEST_%s", uuid.New().String()[:8]),
 		TradeId:     fmt.Sprintf("TID_%s", uuid.New().String()[:8]),
 		TradeHash:   "",
-		UsdtRate:    "7.20",
-		Amount:      "100.00",
-		Money:       720.00,
+		UsdtRate:    func() decimal.Decimal { d, _ := decimal.NewFromString("7.20"); return d }(),
+		Amount:      func() decimal.Decimal { d, _ := decimal.NewFromString("100.00"); return d }(),
+		Money:       decimal.NewFromFloat(720.00),
 		Chain:       "TRON",
 		Address:     "TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t",
 		FromAddress: "",
@@ -50,10 +50,12 @@ func CreateTestOrder(customFields ...map[string]interface{}) *model.TradeOrders 
 			order.TradeHash = v
 		}
 		if v, ok := fields["amount"].(string); ok {
-			order.Amount = v
+			if amount, err := decimal.NewFromString(v); err == nil {
+				order.Amount = amount
+			}
 		}
 		if v, ok := fields["money"].(float64); ok {
-			order.Money = v
+			order.Money = decimal.NewFromFloat(v)
 		}
 		if v, ok := fields["chain"].(string); ok {
 			order.Chain = v
@@ -65,7 +67,7 @@ func CreateTestOrder(customFields ...map[string]interface{}) *model.TradeOrders 
 			order.FromAddress = v
 		}
 		if v, ok := fields["status"].(int); ok {
-			order.Status = v
+			order.Status = int16(v)
 		}
 		if v, ok := fields["notify_url"].(string); ok {
 			order.NotifyUrl = v
@@ -74,10 +76,10 @@ func CreateTestOrder(customFields ...map[string]interface{}) *model.TradeOrders 
 			order.ReturnUrl = v
 		}
 		if v, ok := fields["notify_num"].(int); ok {
-			order.NotifyNum = v
+			order.NotifyNum = int16(v)
 		}
 		if v, ok := fields["notify_state"].(int); ok {
-			order.NotifyState = v
+			order.NotifyState = int16(v)
 		}
 		if v, ok := fields["expired_at"].(time.Time); ok {
 			order.ExpiredAt = v
@@ -86,7 +88,7 @@ func CreateTestOrder(customFields ...map[string]interface{}) *model.TradeOrders 
 			order.CreatedAt = v
 		}
 		if v, ok := fields["confirmed_at"].(time.Time); ok {
-			order.ConfirmedAt = v
+			order.ConfirmedAt = &v
 		}
 	}
 
@@ -96,12 +98,16 @@ func CreateTestOrder(customFields ...map[string]interface{}) *model.TradeOrders 
 // CreateTestWalletAddress 创建测试钱包地址
 func CreateTestWalletAddress(chain string, address string) *model.WalletAddress {
 	return &model.WalletAddress{
-		Chain:      chain,
-		Address:    address,
-		StartBlock: 0,
-		OtherNotify: 0,
-		CreatedAt:  time.Now(),
-		UpdatedAt:  time.Now(),
+		Chain:       chain,
+		Address:     address,
+		StartBlock:  0,
+		InAmount:    decimal.Zero,
+		OutAmount:   decimal.Zero,
+		Count:       0,
+		Status:      1, // 启用状态
+		OtherNotify: 1, // 启用通知
+		CreatedAt:   time.Now(),
+		UpdatedAt:   time.Now(),
 	}
 }
 
@@ -692,8 +698,8 @@ func ValidateOrderData(order *model.TradeOrders) []string {
 	if order.TradeId == "" {
 		errors = append(errors, "TradeId is empty")
 	}
-	if order.Amount == "" {
-		errors = append(errors, "Amount is empty")
+	if order.Amount.IsZero() {
+		errors = append(errors, "Amount is zero")
 	}
 	if order.Chain == "" {
 		errors = append(errors, "Chain is empty")
@@ -701,7 +707,7 @@ func ValidateOrderData(order *model.TradeOrders) []string {
 	if order.Address == "" {
 		errors = append(errors, "Address is empty")
 	}
-	if order.Money <= 0 {
+	if order.Money.LessThanOrEqual(decimal.Zero) {
 		errors = append(errors, "Money must be positive")
 	}
 	if order.ExpiredAt.Before(time.Now()) {
@@ -715,7 +721,7 @@ func ValidateOrderData(order *model.TradeOrders) []string {
 func CompareOrders(order1, order2 *model.TradeOrders) bool {
 	return order1.OrderId == order2.OrderId &&
 		order1.TradeId == order2.TradeId &&
-		order1.Amount == order2.Amount &&
+		order1.Amount.Equal(order2.Amount) &&
 		order1.Chain == order2.Chain &&
 		order1.Address == order2.Address &&
 		order1.Status == order2.Status

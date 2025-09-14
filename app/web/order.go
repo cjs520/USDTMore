@@ -33,8 +33,29 @@ func CreateTransaction(ctx *gin.Context) {
 		return
 	}
 
-	// 获取兑换汇率
+	// 获取兑换汇率并转换为decimal
 	rate := usdt.GetLatestRate()
+	rateDecimal, err := help.SafeDecimalFromFloat(rate)
+	if err != nil {
+		log.Error("汇率转换失败：", err.Error())
+		ctx.JSON(200, RespFailJson(fmt.Errorf("汇率数据异常")))
+		return
+	}
+
+	// 转换金额为decimal
+	moneyDecimal, err := help.SafeDecimalFromFloat(_money)
+	if err != nil {
+		log.Error("金额转换失败：", err.Error())
+		ctx.JSON(200, RespFailJson(fmt.Errorf("金额格式错误")))
+		return
+	}
+
+	// 验证金额
+	if err := help.ValidateMoneyAmount(moneyDecimal); err != nil {
+		log.Error("金额验证失败：", err.Error())
+		ctx.JSON(200, RespFailJson(fmt.Errorf("金额无效：%v", err)))
+		return
+	}
 
 	// 获取钱包地址
 	var wallet = model.GetAvailableAddress(_chain)
@@ -69,14 +90,23 @@ func CreateTransaction(ctx *gin.Context) {
 	var _expiredAt = time.Now().Add(config.GetExpireTime() * time.Second)
 	
 	orderSvc := service.NewOrderService(repo, amountSvc)
+	
+	// 转换_amount字符串为decimal
+	amountDecimal, err := help.SafeDecimalFromString(_amount)
+	if err != nil {
+		log.Error("交易金额转换失败：", err.Error())
+		ctx.JSON(200, RespFailJson(fmt.Errorf("交易金额计算错误")))
+		return
+	}
+	
 	createReq := service.CreateOrderRequest{
 		OrderID:   _orderId,
 		TradeID:   _tradeId,
 		Chain:     address.Chain,
 		Address:   address.Address,
-		Amount:    _amount,
-		Money:     _money,
-		UsdtRate:  fmt.Sprintf("%v", rate),
+		Amount:    amountDecimal,
+		Money:     moneyDecimal,
+		UsdtRate:  rateDecimal,
 		ReturnURL: _redirectUrl,
 		NotifyURL: _notifyUrl,
 		ExpiredAt: _expiredAt,
@@ -93,8 +123,8 @@ func CreateTransaction(ctx *gin.Context) {
 	ctx.JSON(200, RespSuccJson(gin.H{
 		"trade_id":        order.TradeId,
 		"order_id":        order.OrderId,
-		"amount":          order.Money,
-		"actual_amount":   order.Amount,
+		"amount":          help.FormatMoney(order.Money), // 确保货币金额格式化为2位小数
+		"actual_amount":   help.FormatCryptoFixed(order.Amount), // 确保加密货币金额格式化为2位小数（用于显示）
 		"token":           order.Address,
 		"expiration_time": order.ExpiredAt.Unix(),
 		"payment_url":     fmt.Sprintf("%s/pay/checkout-counter/%s", config.GetAppUri(_host), order.TradeId),

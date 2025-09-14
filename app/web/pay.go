@@ -47,7 +47,7 @@ func CheckoutCounter(ctx *gin.Context) {
 		"address":    order.Address,
 		"expire":     int64(order.ExpiredAt.Sub(time.Now()).Seconds()),
 		"return_url": order.ReturnUrl,
-		"usdt_rate":  order.UsdtRate,
+		"usdt_rate":  order.UsdtRate.String(),
 	}
 	ctx.HTML(200, "checkout-counter.html", vars)
 }

@@ -1,11 +1,11 @@
 package model
 
 import (
+	"USDTMore/app/help"
 	"context"
 	"errors"
 	"fmt"
 	"math/rand"
-	"strconv"
 	"time"
 
 	"github.com/shopspring/decimal"
@@ -23,26 +23,26 @@ const Atomicity = 0.01 // 原子精度
 // 移除全局锁，改为使用数据库事务和乐观锁
 
 type TradeOrders struct {
-	Id          int64     `gorm:"primary_key;AUTO_INCREMENT;comment:id"`
-	OrderId     string    `gorm:"type:varchar(255);not null;unique;color:blue;comment:客户订单ID"`
-	TradeId     string    `gorm:"type:varchar(255);not null;unique;color:blue;comment:本地订单ID"`
-	TradeHash   string    `gorm:"type:varchar(64);default:'';unique;comment:交易哈希"`
-	UsdtRate    string    `gorm:"type:varchar(10);not null;comment:USDT汇率"`
-	Amount      string    `gorm:"type:decimal(10,2);not null;default:0;comment:USDT交易数额"`
-	Money       float64   `gorm:"type:decimal(10,2);not null;default:0;comment:订单交易金额"`
-	Chain       string    `gorm:"type:varchar(255);not null;comment:链路名称 TRON POLY OP BSC"`
-	Address     string    `gorm:"type:varchar(34);not null;comment:收款地址"`
-	FromAddress string    `gorm:"type:varchar(34);not null;default:'';comment:支付地址"`
-	Status      int       `gorm:"type:tinyint(1);not null;default:0;comment:交易状态 1：等待支付 2：支付成功 3：订单过期"`
-	Version     int64     `gorm:"type:bigint;not null;default:0;comment:乐观锁版本号"`
-	ReturnUrl   string    `gorm:"type:varchar(255);not null;default:'';comment:同步地址"`
-	NotifyUrl   string    `gorm:"type:varchar(255);not null;default:'';comment:异步地址"`
-	NotifyNum   int       `gorm:"type:int(11);not null;default:0;comment:回调次数"`
-	NotifyState int       `gorm:"type:tinyint(1);not null;default:0;comment:回调状态 1：成功 0：失败"`
-	ExpiredAt   time.Time `gorm:"type:timestamp;not null;comment:订单失效时间"`
-	CreatedAt   time.Time `gorm:"autoCreateTime;type:timestamp;not null;comment:创建时间"`
-	UpdatedAt   time.Time `gorm:"autoUpdateTime;type:timestamp;not null;comment:更新时间"`
-	ConfirmedAt time.Time `gorm:"type:timestamp;null;comment:交易确认时间"`
+	Id          int64           `gorm:"primaryKey;autoIncrement;comment:id;index:idx_trade_orders_id"`
+	OrderId     string          `gorm:"type:varchar(255);not null;uniqueIndex:idx_trade_orders_order_id;comment:客户订单ID"`
+	TradeId     string          `gorm:"type:varchar(255);not null;uniqueIndex:idx_trade_orders_trade_id;comment:本地订单ID"`
+	TradeHash   string          `gorm:"type:char(66);default:'';uniqueIndex:idx_trade_orders_trade_hash;comment:交易哈希"`
+	UsdtRate    decimal.Decimal `gorm:"type:numeric(18,8);not null;comment:USDT汇率"`
+	Amount      decimal.Decimal `gorm:"type:numeric(18,8);not null;default:0;comment:USDT交易数额;index:idx_trade_orders_amount"`
+	Money       decimal.Decimal `gorm:"type:numeric(18,2);not null;default:0;comment:订单交易金额"`
+	Chain       string          `gorm:"type:varchar(20);not null;comment:链路名称 TRON POLY OP BSC;index:idx_trade_orders_chain"`
+	Address     string          `gorm:"type:varchar(50);not null;comment:收款地址;index:idx_trade_orders_address"`
+	FromAddress string          `gorm:"type:varchar(50);not null;default:'';comment:支付地址"`
+	Status      int16           `gorm:"type:smallint;not null;default:0;comment:交易状态 1：等待支付 2：支付成功 3：订单过期;index:idx_trade_orders_status"`
+	Version     int64           `gorm:"type:bigint;not null;default:0;comment:乐观锁版本号"`
+	ReturnUrl   string          `gorm:"type:text;not null;default:'';comment:同步地址"`
+	NotifyUrl   string          `gorm:"type:text;not null;default:'';comment:异步地址"`
+	NotifyNum   int16           `gorm:"type:smallint;not null;default:0;comment:回调次数"`
+	NotifyState int16           `gorm:"type:smallint;not null;default:0;comment:回调状态 1：成功 0：失败;index:idx_trade_orders_notify_state"`
+	ExpiredAt   time.Time       `gorm:"type:timestamptz;not null;comment:订单失效时间;index:idx_trade_orders_expired_at"`
+	CreatedAt   time.Time       `gorm:"autoCreateTime;type:timestamptz;not null;comment:创建时间;index:idx_trade_orders_created_at"`
+	UpdatedAt   time.Time       `gorm:"autoUpdateTime;type:timestamptz;not null;comment:更新时间"`
+	ConfirmedAt *time.Time      `gorm:"type:timestamptz;null;comment:交易确认时间;index:idx_trade_orders_confirmed_at"`
 }
 
 /*
@@ -87,7 +87,7 @@ func (o *TradeOrders) OrderSetSuccWithContext(ctx context.Context, fromAddress, 
 	// 更新本地对象的状态
 	o.Status = OrderStatusSuccess
 	o.FromAddress = fromAddress
-	o.ConfirmedAt = confirmedAt
+	o.ConfirmedAt = &confirmedAt
 	o.TradeHash = tradeHash
 	o.Version = currentVersion + 1
 
@@ -99,7 +99,7 @@ func (o *TradeOrders) OrderSetSuccWithContext(ctx context.Context, fromAddress, 
 */
 func (o *TradeOrders) OrderSetNotifyState(state int) error {
 	o.NotifyNum += 1
-	o.NotifyState = state
+	o.NotifyState = int16(state)
 
 	return DB.Save(o).Error
 }
@@ -162,8 +162,13 @@ func CalcTradeAmount(wa []WalletAddress, rate, money float64) (WalletAddress, st
 	// 向后兼容：如果DB未初始化，直接返回第一个地址和基础金额
 	if DB == nil {
 		if len(wa) > 0 {
-			payAmount := strconv.FormatFloat(money/rate, 'f', 2, 64)
-			return wa[0], payAmount
+			moneyDecimal, _ := help.SafeDecimalFromFloat(money)
+			rateDecimal, _ := help.SafeDecimalFromFloat(rate)
+			if !rateDecimal.IsZero() {
+				payAmount, _ := help.CalculateUSDTAmount(moneyDecimal, rateDecimal)
+				return wa[0], help.FormatCryptoFixed(payAmount)
+			}
+			return wa[0], "0"
 		}
 		return WalletAddress{}, "0"
 	}
@@ -172,8 +177,13 @@ func CalcTradeAmount(wa []WalletAddress, rate, money float64) (WalletAddress, st
 	if result.Error != nil {
 		// 如果出错，返回第一个地址和基础金额（向后兼容）
 		if len(wa) > 0 {
-			payAmount := strconv.FormatFloat(money/rate, 'f', 2, 64)
-			return wa[0], payAmount
+			moneyDecimal, _ := help.SafeDecimalFromFloat(money)
+			rateDecimal, _ := help.SafeDecimalFromFloat(rate)
+			if !rateDecimal.IsZero() {
+				payAmount, _ := help.CalculateUSDTAmount(moneyDecimal, rateDecimal)
+				return wa[0], help.FormatCryptoFixed(payAmount)
+			}
+			return wa[0], "0"
 		}
 		return WalletAddress{}, "0"
 	}
@@ -184,31 +194,57 @@ func CalcTradeAmount(wa []WalletAddress, rate, money float64) (WalletAddress, st
 func CalcTradeAmountWithContext(ctx context.Context, wa []WalletAddress, rate, money float64) CalcTradeAmountResult {
 	const (
 		maxRetries = 10
-		maxAmount  = 100000.0 // 最大金额限制
 	)
 
 	if len(wa) == 0 {
 		return CalcTradeAmountResult{Error: errors.New("no wallet addresses available")}
 	}
 
-	baseAmount := decimal.NewFromFloat(money / rate)
+	// 使用help包的安全转换函数
+	moneyDecimal, err := help.SafeDecimalFromFloat(money)
+	if err != nil {
+		return CalcTradeAmountResult{Error: fmt.Errorf("invalid money value: %w", err)}
+	}
+	
+	rateDecimal, err := help.SafeDecimalFromFloat(rate)
+	if err != nil {
+		return CalcTradeAmountResult{Error: fmt.Errorf("invalid rate value: %w", err)}
+	}
+	
+	// 验证输入金额
+	if err := help.ValidateMoneyAmount(moneyDecimal); err != nil {
+		return CalcTradeAmountResult{Error: fmt.Errorf("invalid money amount: %w", err)}
+	}
+
+	// 计算基础USDT金额
+	baseAmount, err := help.CalculateUSDTAmount(moneyDecimal, rateDecimal)
+	if err != nil {
+		return CalcTradeAmountResult{Error: fmt.Errorf("failed to calculate USDT amount: %w", err)}
+	}
+	
+	// 验证金额在支付范围内
+	if !help.IsInPaymentRange(baseAmount) {
+		return CalcTradeAmountResult{Error: errors.New("amount outside valid payment range")}
+	}
+	
 	atom := decimal.NewFromFloat(Atomicity)
 	
 	// 智能金额递增算法：线性递增 + 随机偏移
 	for attempt := 0; attempt < maxRetries; attempt++ {
-		// 线性递增
-		linearIncrement := atom.Mul(decimal.NewFromInt(int64(attempt)))
+		// 使用help包的原子增量函数
+		currentAmount := help.AddAtomicIncrement(baseAmount, attempt, atom)
 		
 		// 添加小的随机偏移以分散并发请求
-		randomOffset := decimal.NewFromFloat(rand.Float64() * 0.01) // 0-0.01 USDT
+		randomOffset, _ := help.SafeDecimalFromFloat(rand.Float64() * 0.01) // 0-0.01 USDT
+		currentAmount = currentAmount.Add(randomOffset)
 		
-		currentAmount := baseAmount.Add(linearIncrement).Add(randomOffset)
-		standardAmount := currentAmount.StringFixed(2)
-		
-		// 金额上限检查
-		if currentAmount.GreaterThan(decimal.NewFromFloat(maxAmount)) {
-			return CalcTradeAmountResult{Error: errors.New("amount exceeds maximum limit")}
+		// 重新验证调整后的金额
+		if !help.IsInPaymentRange(currentAmount) {
+			return CalcTradeAmountResult{Error: errors.New("adjusted amount exceeds payment range")}
 		}
+		
+		// 使用标准化格式
+		standardAmount := help.FormatCryptoFixed(currentAmount)
 
 		// 尝试为每个地址找到可用金额
 		for _, address := range wa {

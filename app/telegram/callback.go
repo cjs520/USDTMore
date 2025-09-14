@@ -14,6 +14,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/shopspring/decimal"
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 	"github.com/tidwall/gjson"
 )
@@ -192,9 +193,9 @@ func cbOrderDetailAction(tradeId string) {
 
 		var _msg = tgbotapi.NewMessage(0, "```"+`
 📌 订单ID：`+o.OrderId+`
-📊 交易汇率：`+o.UsdtRate+`(`+config.GetUsdtRateRaw()+`)
-💰 交易金额：`+fmt.Sprintf("%.2f", o.Money)+` CNY
-💲 交易数额：`+o.Amount+` USDT
+📊 交易汇率：`+o.UsdtRate.String()+`(`+config.GetUsdtRateRaw()+`)
+💰 交易金额：`+o.Money.StringFixed(2)+` CNY
+💲 交易数额：`+o.Amount.StringFixed(8)+` USDT
 🌏 商户网站：`+_site.String()+`
 🔋 收款状态：`+o.GetStatusLabel()+`
 🍀 回调状态：`+_notifyStateLabel+`
@@ -514,8 +515,10 @@ func getWalletInfoETH(name string, unit string, chain string, host string, apiKe
 		allTx := requestAddress(host, queryTx)
 		resultTx := gjson.ParseBytes(allTx)
 
-		totalInValue := new(big.Float).SetFloat64(wa.InAmount)
-		totalOutValue := new(big.Float).SetFloat64(wa.OutAmount)
+		inAmountFloat, _ := wa.InAmount.Float64()
+		outAmountFloat, _ := wa.OutAmount.Float64()
+		totalInValue := new(big.Float).SetFloat64(inAmountFloat)
+		totalOutValue := new(big.Float).SetFloat64(outAmountFloat)
 		totalCount := big.NewInt(wa.Count)
 		timeNow := time.Now()
 		threeHourAgo := timeNow.Add(-3 * time.Hour)
@@ -565,8 +568,10 @@ func getWalletInfoETH(name string, unit string, chain string, host string, apiKe
 			// 超过3小时的话，就更新时间戳, 合计进/出，当前并不使用
 			if txTime.Before(threeHourAgo) {
 				wa.StartBlock = tx.Get("blockNumber").Int()
-				wa.InAmount, _ = totalInValue.Float64()
-				wa.OutAmount, _ = totalOutValue.Float64()
+				inFloat, _ := totalInValue.Float64()
+				outFloat, _ := totalOutValue.Float64()
+				wa.InAmount = decimal.NewFromFloat(inFloat)
+				wa.OutAmount = decimal.NewFromFloat(outFloat)
 				wa.Count = totalCount.Int64()
 			}
 			model.DB.Save(wa)

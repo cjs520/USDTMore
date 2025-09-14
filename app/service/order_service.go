@@ -5,6 +5,8 @@ import (
 	"context"
 	"fmt"
 	"time"
+
+	"github.com/shopspring/decimal"
 )
 
 // OrderService 定义订单服务接口
@@ -34,9 +36,9 @@ type CreateOrderRequest struct {
 	TradeID     string
 	Chain       string
 	Address     string
-	Amount      string
-	Money       float64
-	UsdtRate    string
+	Amount      decimal.Decimal
+	Money       decimal.Decimal
+	UsdtRate    decimal.Decimal
 	ReturnURL   string
 	NotifyURL   string
 	ExpiredAt   time.Time

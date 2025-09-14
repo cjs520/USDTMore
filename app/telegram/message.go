@@ -44,9 +44,9 @@ func SendTradeSuccMsg(order model.TradeOrders) {
 `
 	text = fmt.Sprintf(text,
 		order.OrderId,
-		order.Money,
-		order.UsdtRate,
-		order.Amount,
+		order.Money.String(),
+		order.UsdtRate.String(),
+		order.Amount.String(),
 		postfix,
 		help.MaskAddress(order.Address),
 		order.CreatedAt.Format(time.DateTime),

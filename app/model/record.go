@@ -5,9 +5,9 @@ import (
 )
 
 type NotifyRecord struct {
-	Txid      string    `gorm:"primary_key;type:varchar(64);not null;comment:交易哈希"`
-	CreatedAt time.Time `gorm:"autoCreateTime;type:timestamp;not null;comment:创建时间"`
-	UpdatedAt time.Time `gorm:"autoUpdateTime;type:timestamp;not null;comment:更新时间"`
+	Txid      string    `gorm:"primaryKey;type:char(66);not null;comment:交易哈希;index:idx_notify_record_txid"`
+	CreatedAt time.Time `gorm:"autoCreateTime;type:timestamptz;not null;comment:创建时间;index:idx_notify_record_created_at"`
+	UpdatedAt time.Time `gorm:"autoUpdateTime;type:timestamptz;not null;comment:更新时间"`
 }
 
 func (nr *NotifyRecord) TableName() string {

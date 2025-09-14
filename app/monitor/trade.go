@@ -66,8 +66,7 @@ func TradeStart(ctx context.Context) {
 			}
 			
 			// 标准化订单金额格式
-			amount, _ := decimal.NewFromString(order.Amount)
-			standardAmount := amount.StringFixed(2)
+			standardAmount := help.FormatCryptoFixed(order.Amount)
 			_lock[order.Chain+order.Address+standardAmount] = order
 		}
 
@@ -347,7 +346,7 @@ func handlePaymentTransactionForETH(_lock map[string]model.TradeOrders, _toChain
 		}
 
 		// 使用标准化的金额格式进行订单匹配
-		amountStr := decimalUSDT.StringFixed(2) // 统一使用2位小数格式
+		amountStr := help.FormatCryptoFixed(decimalUSDT) // 统一使用2位小数格式
 		orderKey := _toChain+_toAddress+amountStr
 		_order, ok := _lock[orderKey]
 		if !ok {
@@ -979,7 +978,7 @@ func handlePaymentTransactionForSolana(_lock map[string]model.TradeOrders, _toAd
 		}
 
 		// 查找匹配的订单 - 使用双重格式匹配
-		amountStr := _rawQuant.StringFixed(2) // 标准化格式
+		amountStr := help.FormatCryptoFixed(_rawQuant) // 标准化格式
 		orderKey := "SOL"+_toAddress+amountStr
 		_order, ok := _lock[orderKey]
 		if !ok {
@@ -1092,7 +1091,7 @@ func handlePaymentTransactionForAptos(_lock map[string]model.TradeOrders, _toAdd
 			}
 
 			// 查找匹配订单 - 使用双重格式匹配
-			amountStr := _rawQuant.StringFixed(2) // 标准化格式
+			amountStr := help.FormatCryptoFixed(_rawQuant) // 标准化格式
 			orderKey := "APT"+_toAddress+amountStr
 			_order, ok := _lock[orderKey]
 			if !ok {
@@ -1187,12 +1186,17 @@ func handleOtherNotifyForAptos(_toAddress string, result gjson.Result) {
 	}
 }
 
-// 解析交易金额
+// 解析交易金额 - 使用help包的安全转换
 func parseTransAmount(amount float64) (decimal.Decimal, string) {
-	var _decimalAmount = decimal.NewFromFloat(amount)
-	var _decimalDivisor = decimal.NewFromFloat(1000000)
-	var result = _decimalAmount.Div(_decimalDivisor)
+	amountDecimal, err := help.SafeDecimalFromFloat(amount)
+	if err != nil {
+		// 如果转换失败，返回零值
+		return decimal.Zero, "0.00"
+	}
+	
+	divisor := decimal.NewFromFloat(1000000) // USDT有6位小数
+	result := amountDecimal.Div(divisor)
 
 	// 返回标准化的2位小数格式，确保与订单Key匹配
-	return result, result.StringFixed(2)
+	return result, help.FormatCryptoFixed(result)
 }

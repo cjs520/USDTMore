@@ -26,11 +26,11 @@ func OrderNotify(order model.TradeOrders) {
 	}{
 		TradeId:            order.TradeId,
 		OrderId:            order.OrderId,
-		Amount:             order.Money,
-		ActualAmount:       order.Amount,
+		Amount:             func() float64 { f, _ := help.ToFloat64Safe(order.Money); return f }(),
+		ActualAmount:       help.FormatCryptoFixed(order.Amount),
 		Token:              order.Address,
 		BlockTransactionId: order.TradeHash,
-		Status:             order.Status,
+		Status:             int(order.Status),
 	}
 	var jsonBody, err = json.Marshal(body)
 	if err != nil {

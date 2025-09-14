@@ -216,6 +216,12 @@ func AutoMigrateWithContext(ctx context.Context) error {
 		// 不阻塞主要迁移流程
 	}
 
+	// 执行PostgreSQL特定的优化索引
+	if err := createPostgreSQLOptimizedIndexes(ctx); err != nil {
+		log.Printf("Warning: PostgreSQL optimized indexes creation failed: %v", err)
+		// 不阻塞主要迁移流程
+	}
+
 	// 执行迁移后验证
 	if err := postMigrationValidation(ctx); err != nil {
 		return fmt.Errorf("post-migration validation failed: %w", err)
@@ -595,4 +601,74 @@ func Stats() (interface{}, error) {
 	}
 	
 	return sqlDB.Stats(), nil
+}
+
+// createPostgreSQLOptimizedIndexes 创建PostgreSQL优化的复合索引
+func createPostgreSQLOptimizedIndexes(ctx context.Context) error {
+	log.Println("Creating PostgreSQL optimized indexes...")
+
+	// 定义复合索引SQL
+	indexes := []string{
+		// TradeOrders 核心查询索引
+		`CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_trade_orders_status_chain_address 
+		 ON trade_orders (status, chain, address) WHERE status IN (1, 2)`,
+
+		`CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_trade_orders_status_amount 
+		 ON trade_orders (status, amount) WHERE status = 1`,
+
+		`CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_trade_orders_chain_address_amount 
+		 ON trade_orders (chain, address, amount) WHERE status = 1`,
+
+		`CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_trade_orders_expired_status 
+		 ON trade_orders (expired_at, status) WHERE status = 1`,
+
+		`CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_trade_orders_notify_failed 
+		 ON trade_orders (status, notify_num, notify_state) 
+		 WHERE status = 2 AND notify_num > 0 AND notify_state = 0`,
+
+		// 时间范围查询优化 - 使用BRIN索引适合时序数据
+		`CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_trade_orders_created_at_brin 
+		 ON trade_orders USING BRIN (created_at)`,
+
+		`CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_trade_orders_confirmed_at_brin 
+		 ON trade_orders USING BRIN (confirmed_at) WHERE confirmed_at IS NOT NULL`,
+
+		// WalletAddress 查询索引
+		`CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_wallet_address_chain_status 
+		 ON wallet_address (chain, status) WHERE status = 1`,
+
+		`CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_wallet_address_status_other_notify 
+		 ON wallet_address (status, other_notify, chain, address) WHERE status = 1`,
+
+		// 部分索引优化 - 只索引活跃记录
+		`CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_trade_orders_active_orders 
+		 ON trade_orders (created_at, chain, address) 
+		 WHERE status = 1 AND expired_at > NOW()`,
+
+		// 覆盖索引 - 包含常用查询字段
+		`CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_trade_orders_covering 
+		 ON trade_orders (status, chain, address) 
+		 INCLUDE (amount, trade_id, created_at) WHERE status IN (1, 2)`,
+	}
+
+	// 逐个执行索引创建
+	for i, indexSQL := range indexes {
+		log.Printf("Creating index %d/%d", i+1, len(indexes))
+		
+		// 使用较短的上下文超时来避免长时间阻塞
+		indexCtx, cancel := context.WithTimeout(ctx, 5*time.Minute)
+		err := DB.WithContext(indexCtx).Exec(indexSQL).Error
+		cancel()
+
+		if err != nil {
+			// 记录错误但不阻塞整个流程
+			log.Printf("Warning: Failed to create index %d: %v", i+1, err)
+			continue
+		}
+		
+		log.Printf("Successfully created index %d/%d", i+1, len(indexes))
+	}
+
+	log.Println("PostgreSQL optimized indexes creation completed")
+	return nil
 }
