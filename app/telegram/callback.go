@@ -288,7 +288,13 @@ func getWalletInfoByTRONGridAPI(address string) string {
 
 	accountData := result.Get("data.0")
 	if !accountData.Exists() {
-		log.Error("TRON地址不存在或无效:", address)
+		// 提供更详细的错误信息
+		dataArray := result.Get("data")
+		if dataArray.IsArray() && len(dataArray.Array()) == 0 {
+			log.Error("TRON地址未激活或不存在:", address)
+		} else {
+			log.Error("TRON API响应格式异常:", address, "响应:", result.Raw)
+		}
 		return ""
 	}
 
@@ -358,6 +364,18 @@ func getWalletInfoByTRONScanAPI(address string) string {
 		return ""
 	}
 	result := gjson.ParseBytes(all)
+
+	// 检查API响应是否包含错误
+	if result.Get("error").Exists() {
+		log.Error("TRON Scan API返回错误:", result.Get("error").String(), "地址:", address)
+		return ""
+	}
+
+	// 检查地址是否存在（通过date_created字段判断）
+	if !result.Get("date_created").Exists() || result.Get("date_created").Int() == 0 {
+		log.Error("TRON地址未激活或不存在:", address)
+		return ""
+	}
 
 	var dateCreated = time.UnixMilli(result.Get("date_created").Int())
 	var latestOperationTime = time.UnixMilli(result.Get("latest_operation_time").Int())
