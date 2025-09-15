@@ -482,23 +482,35 @@ func getWalletInfoETH(name string, unit string, chain string, host string, apiKe
 		chainId = "1" // Ethereum mainnet
 	}
 
-	// 这里计算的是ETH余额
-	var queryETH = "chainid=" + chainId + "&module=account&action=balance&address=" + address + "&apikey=" + apiKey
+	// 这里计算的是ETH余额 - 使用正确的Etherscan V2 API格式
+	var queryETH = "chainid=" + chainId + "&module=account&action=balance&address=" + address + "&tag=latest&apikey=" + apiKey
 	allETH := requestAddress(host, queryETH)
 	resultETH := gjson.ParseBytes(allETH)
+
+	// 检查API响应状态
+	if resultETH.Get("status").String() != "1" {
+		log.Error("Etherscan API错误 (ETH余额):", resultETH.Get("message").String())
+		return ""
+	}
 
 	// 将余额从 Wei 转换为 ETH
 	balanceWei, err := strconv.ParseFloat(resultETH.Get("result").String(), 64)
 	if err != nil {
 		log.Error("GetWalletInfoByAddress convert into ETH", err)
+		balanceWei = 0
 	}
 	balanceETH := balanceWei / 1e18 // 1 ETH = 10^18 Wei
-	//
 
-	// 这里计算的是ERC-20余额
-	var queryUSDT = "chainid=" + chainId + "&module=account&action=tokenbalance&contractaddress=" + contractAddress + "&address=" + address + "&tag=latest" + "&apikey=" + apiKey
+	// 这里计算的是ERC-20余额 - 使用正确的Etherscan V2 API格式
+	var queryUSDT = "chainid=" + chainId + "&module=account&action=tokenbalance&contractaddress=" + contractAddress + "&address=" + address + "&tag=latest&apikey=" + apiKey
 	allUSDT := requestAddress(host, queryUSDT)
 	resultUSDT := gjson.ParseBytes(allUSDT)
+
+	// 检查API响应状态
+	if resultUSDT.Get("status").String() != "1" {
+		log.Error("Etherscan API错误 (USDT余额):", resultUSDT.Get("message").String())
+		return ""
+	}
 
 	// 将余额从最小单位转换为标准单位
 	var rawValue = resultUSDT.Get("result").String()
@@ -526,10 +538,16 @@ func getWalletInfoETH(name string, unit string, chain string, host string, apiKe
 	var wa model.WalletAddress
 	var text = ""
 	if model.DB.Where("chain = ? and address = ?", chain, address).First(&wa).Error == nil {
-		// 这里查询订单历史
-		var queryTx = "chainid=" + chainId + "&module=account&action=tokentx&contractaddress=" + contractAddress + "&address=" + address + "&startblock=" + strconv.FormatInt(wa.StartBlock+1, 10) + "&endblock=" + strconv.FormatInt(wa.StartBlock+999999999999, 10) + "&sort=asc" + "&apikey=" + apiKey
+		// 这里查询订单历史 - 使用正确的Etherscan V2 API格式
+		var queryTx = "chainid=" + chainId + "&module=account&action=tokentx&contractaddress=" + contractAddress + "&address=" + address + "&page=1&offset=100&startblock=" + strconv.FormatInt(wa.StartBlock+1, 10) + "&endblock=" + strconv.FormatInt(wa.StartBlock+999999999999, 10) + "&sort=asc&apikey=" + apiKey
 		allTx := requestAddress(host, queryTx)
 		resultTx := gjson.ParseBytes(allTx)
+
+		// 检查API响应状态
+		if resultTx.Get("status").String() != "1" {
+			log.Error("Etherscan API错误 (交易历史):", resultTx.Get("message").String())
+			// 如果API调用失败，仍然返回基本信息
+		}
 
 		totalInValue := new(big.Float).SetFloat64(wa.InAmount)
 		totalOutValue := new(big.Float).SetFloat64(wa.OutAmount)

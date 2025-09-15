@@ -12,10 +12,22 @@ import (
 )
 
 func OrderNotify(order model.TradeOrders) {
+	// 验证订单状态，只有支付成功的订单才发送回调
+	if order.Status != model.OrderStatusSuccess {
+		log.Warn(fmt.Sprintf("订单状态不正确，跳过回调: order_id=%s, status=%d", order.OrderId, order.Status))
+		return
+	}
+
 	// 验证回调URL安全性
 	if !help.IsValidCallbackURL(order.NotifyUrl) {
 		log.Error("订单回调URL不安全，拒绝发送：", order.OrderId, "URL:", order.NotifyUrl)
 		order.OrderSetNotifyState(model.OrderNotifyStateFail)
+		return
+	}
+
+	// 检查是否已经成功回调过
+	if order.NotifyState == model.OrderNotifyStateSucc {
+		log.Info(fmt.Sprintf("订单已成功回调，跳过重复发送: order_id=%s", order.OrderId))
 		return
 	}
 

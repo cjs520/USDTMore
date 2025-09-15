@@ -246,10 +246,17 @@ func handlePaymentTransactionForTronScan(_lock map[string]model.TradeOrders, _to
 		} else {
 			log.Info(fmt.Sprintf("[TRON] 订单支付成功，发送回调: order_id=%s, txid=%s",
 				_order.TradeId, _transId))
-			// 通知订单支付成功
-			go notify.OrderNotify(_order)
-			// TG发送订单信息
-			go telegram.SendTradeSuccMsg(_order)
+
+			// 重新查询订单以获取最新状态
+			var updatedOrder model.TradeOrders
+			if err := model.DB.Where("id = ?", _order.Id).First(&updatedOrder).Error; err != nil {
+				log.Error(fmt.Sprintf("[TRON] 重新查询订单失败: order_id=%s, error=%v", _order.TradeId, err))
+			} else {
+				// 通知订单支付成功
+				go notify.OrderNotify(updatedOrder)
+				// TG发送订单信息
+				go telegram.SendTradeSuccMsg(updatedOrder)
+			}
 		}
 	}
 }
@@ -293,10 +300,17 @@ func handlePaymentTransactionForTronGrid(_lock map[string]model.TradeOrders, _to
 		} else {
 			log.Info(fmt.Sprintf("[TRON] 订单支付成功，发送回调: order_id=%s, txid=%s",
 				_order.TradeId, _transId))
-			// 通知订单支付成功
-			go notify.OrderNotify(_order)
-			// TG发送订单信息
-			go telegram.SendTradeSuccMsg(_order)
+
+			// 重新查询订单以获取最新状态
+			var updatedOrder model.TradeOrders
+			if err := model.DB.Where("id = ?", _order.Id).First(&updatedOrder).Error; err != nil {
+				log.Error(fmt.Sprintf("[TRON] 重新查询订单失败: order_id=%s, error=%v", _order.TradeId, err))
+			} else {
+				// 通知订单支付成功
+				go notify.OrderNotify(updatedOrder)
+				// TG发送订单信息
+				go telegram.SendTradeSuccMsg(updatedOrder)
+			}
 		}
 	}
 }
@@ -388,14 +402,22 @@ func handlePaymentTransactionForETH(_lock map[string]model.TradeOrders, _toChain
 		log.Info(fmt.Sprintf("[%s] 处理订单支付: txid=%s, from=%s, to=%s, amount=%s",
 			_toChain, _transId, _fromAddress, _toAddress, decimalUSDT.String()))
 
-		if _order.OrderSetSucc(_fromAddress, _transId, _createdAt) == nil {
-			// 通知订单支付成功
-			log.Info(fmt.Sprintf("[%s] 订单支付成功，发送回调: order_id=%s, txid=%s", _toChain, _order.TradeId, _transId))
-			go notify.OrderNotify(_order)
-			// TG发送订单信息
-			go telegram.SendTradeSuccMsg(_order)
+		if err := _order.OrderSetSucc(_fromAddress, _transId, _createdAt); err != nil {
+			log.Error(fmt.Sprintf("[%s] 订单设置成功状态失败: order_id=%s, txid=%s, error=%v",
+				_toChain, _order.TradeId, _transId, err))
 		} else {
-			log.Error("[" + _toChain + "] 订单设置成功状态失败: order_id=" + _order.TradeId + ", txid=" + _transId)
+			log.Info(fmt.Sprintf("[%s] 订单支付成功，发送回调: order_id=%s, txid=%s", _toChain, _order.TradeId, _transId))
+
+			// 重新查询订单以获取最新状态
+			var updatedOrder model.TradeOrders
+			if err := model.DB.Where("id = ?", _order.Id).First(&updatedOrder).Error; err != nil {
+				log.Error(fmt.Sprintf("[%s] 重新查询订单失败: order_id=%s, error=%v", _toChain, _order.TradeId, err))
+			} else {
+				// 通知订单支付成功
+				go notify.OrderNotify(updatedOrder)
+				// TG发送订单信息
+				go telegram.SendTradeSuccMsg(updatedOrder)
+			}
 		}
 	}
 }
@@ -764,14 +786,26 @@ func getUsdtTrc20TransByTronGrid(_toAddress string) (gjson.Result, error) {
 }
 
 /*
-请求ETH兼容的链
+请求ETH兼容的链 - 使用正确的Etherscan V2 API格式
 */
 func requestAddress(baseUrl string, query string) []byte {
 	requestURL := baseUrl + "?" + query
 
-	// 设置请求头
+	// 设置请求头，模拟浏览器请求
 	headers := map[string]string{
-		"User-Agent": "USDTMore/1.0",
+		"User-Agent":                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36 Edg/140.0.0.0",
+		"Accept":                    "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7",
+		"Accept-Language":           "zh-CN,zh;q=0.9,en;q=0.8,en-GB;q=0.7,en-US;q=0.6",
+		"Cache-Control":             "max-age=0",
+		"DNT":                       "1",
+		"Sec-CH-UA":                 `"Chromium";v="140", "Not=A?Brand";v="24", "Microsoft Edge";v="140"`,
+		"Sec-CH-UA-Mobile":          "?0",
+		"Sec-CH-UA-Platform":        `"Windows"`,
+		"Sec-Fetch-Dest":            "document",
+		"Sec-Fetch-Mode":            "navigate",
+		"Sec-Fetch-Site":            "none",
+		"Sec-Fetch-User":            "?1",
+		"Upgrade-Insecure-Requests": "1",
 	}
 
 	// 使用统一的HTTP客户端发送请求，包含重试机制
@@ -855,6 +889,12 @@ func getUsdtTransByETH(chain string, address string) (gjson.Result, error) {
 		var queryTx = "chainid=" + chainId + "&module=account&action=tokentx&contractaddress=" + contractAddress + "&address=" + address + "&page=1&offset=100&startblock=" + strconv.FormatInt(wa.StartBlock+1, 10) + "&endblock=" + strconv.FormatInt(wa.StartBlock+999999999999, 10) + "&sort=asc&apikey=" + apiKey
 		allTx := requestAddress(host, queryTx)
 		resultTx := gjson.ParseBytes(allTx)
+
+		// 检查API响应状态
+		if resultTx.Get("status").String() != "1" {
+			log.Error(fmt.Sprintf("[%s] Etherscan API错误: %s", chain, resultTx.Get("message").String()))
+			return gjson.Result{}, fmt.Errorf("Etherscan API错误: %s", resultTx.Get("message").String())
+		}
 
 		// 更新StartBlock - 处理最新的区块号，避免重复查询
 		if resultTx.Get("result").IsArray() && len(resultTx.Get("result").Array()) > 0 {
