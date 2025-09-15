@@ -9,46 +9,46 @@ SELECT 'USDTMore数据库完整初始化脚本开始执行...' as status;
 -- 2. 创建钱包地址表 (wallet_address)
 CREATE TABLE IF NOT EXISTS wallet_address (
     id BIGSERIAL PRIMARY KEY,
-    chain VARCHAR(255) NOT NULL COMMENT '链路名称 TRON POLY OP BSC',
-    start_block BIGINT NOT NULL DEFAULT 0 COMMENT '初始化块，每次查询记录一天之前的blocknum',
-    in_amount DECIMAL(20,8) NOT NULL DEFAULT 0 COMMENT '累计转入',
-    out_amount DECIMAL(20,8) NOT NULL DEFAULT 0 COMMENT '累计转出',
-    count BIGINT NOT NULL DEFAULT 0 COMMENT '历史订单数量',
-    address VARCHAR(64) NOT NULL COMMENT '钱包地址',
-    status SMALLINT NOT NULL DEFAULT 1 COMMENT '地址状态 1启动 0禁止',
-    other_notify SMALLINT NOT NULL DEFAULT 1 COMMENT '其它转账通知 1启动 0禁止',
-    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
-    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '更新时间'
+    chain VARCHAR(255) NOT NULL, -- 链路名称 TRON POLY OP BSC
+    start_block BIGINT NOT NULL DEFAULT 0, -- 初始化块，每次查询记录一天之前的blocknum
+    in_amount DECIMAL(20,8) NOT NULL DEFAULT 0, -- 累计转入
+    out_amount DECIMAL(20,8) NOT NULL DEFAULT 0, -- 累计转出
+    count BIGINT NOT NULL DEFAULT 0, -- 历史订单数量
+    address VARCHAR(64) NOT NULL, -- 钱包地址
+    status SMALLINT NOT NULL DEFAULT 1, -- 地址状态 1启动 0禁止
+    other_notify SMALLINT NOT NULL DEFAULT 1, -- 其它转账通知 1启动 0禁止
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP, -- 创建时间
+    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP -- 更新时间
 );
 
 -- 3. 创建交易订单表 (trade_orders)
 CREATE TABLE IF NOT EXISTS trade_orders (
     id BIGSERIAL PRIMARY KEY,
-    order_id VARCHAR(255) NOT NULL COMMENT '客户订单ID',
-    trade_id VARCHAR(255) NOT NULL COMMENT '本地订单ID',
-    trade_hash VARCHAR(128) DEFAULT '' COMMENT '交易哈希',
-    usdt_rate VARCHAR(10) NOT NULL COMMENT 'USDT汇率',
-    amount DECIMAL(10,2) NOT NULL DEFAULT 0 COMMENT 'USDT交易数额',
-    money DECIMAL(10,2) NOT NULL DEFAULT 0 COMMENT '订单交易金额',
-    chain VARCHAR(255) NOT NULL COMMENT '链路名称 TRON POLY OP BSC',
-    address VARCHAR(64) NOT NULL COMMENT '收款地址',
-    from_address VARCHAR(64) NOT NULL DEFAULT '' COMMENT '支付地址',
-    status SMALLINT NOT NULL DEFAULT 0 COMMENT '交易状态 1：等待支付 2：支付成功 3：订单过期',
-    return_url VARCHAR(255) NOT NULL DEFAULT '' COMMENT '同步地址',
-    notify_url VARCHAR(255) NOT NULL DEFAULT '' COMMENT '异步地址',
-    notify_num INTEGER NOT NULL DEFAULT 0 COMMENT '回调次数',
-    notify_state SMALLINT NOT NULL DEFAULT 0 COMMENT '回调状态 1：成功 0：失败',
-    expired_at TIMESTAMP NOT NULL COMMENT '订单失效时间',
-    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
-    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '更新时间',
-    confirmed_at TIMESTAMP NULL COMMENT '交易确认时间'
+    order_id VARCHAR(255) NOT NULL, -- 客户订单ID
+    trade_id VARCHAR(255) NOT NULL, -- 本地订单ID
+    trade_hash VARCHAR(128) DEFAULT '', -- 交易哈希
+    usdt_rate VARCHAR(10) NOT NULL, -- USDT汇率
+    amount DECIMAL(10,2) NOT NULL DEFAULT 0, -- USDT交易数额
+    money DECIMAL(10,2) NOT NULL DEFAULT 0, -- 订单交易金额
+    chain VARCHAR(255) NOT NULL, -- 链路名称 TRON POLY OP BSC
+    address VARCHAR(64) NOT NULL, -- 收款地址
+    from_address VARCHAR(64) NOT NULL DEFAULT '', -- 支付地址
+    status SMALLINT NOT NULL DEFAULT 0, -- 交易状态 1：等待支付 2：支付成功 3：订单过期
+    return_url VARCHAR(255) NOT NULL DEFAULT '', -- 同步地址
+    notify_url VARCHAR(255) NOT NULL DEFAULT '', -- 异步地址
+    notify_num INTEGER NOT NULL DEFAULT 0, -- 回调次数
+    notify_state SMALLINT NOT NULL DEFAULT 0, -- 回调状态 1：成功 0：失败
+    expired_at TIMESTAMP NOT NULL, -- 订单失效时间
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP, -- 创建时间
+    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP, -- 更新时间
+    confirmed_at TIMESTAMP NULL -- 交易确认时间
 );
 
 -- 4. 创建通知记录表 (notify_record)
 CREATE TABLE IF NOT EXISTS notify_record (
-    txid VARCHAR(66) PRIMARY KEY COMMENT '交易哈希',
-    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
-    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '更新时间'
+    txid VARCHAR(66) PRIMARY KEY, -- 交易哈希
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP, -- 创建时间
+    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP -- 更新时间
 );
 
 -- 5. 创建基础索引
