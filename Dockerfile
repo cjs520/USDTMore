@@ -36,8 +36,10 @@ RUN apk add --no-cache \
     postgresql-client \
     && rm -rf /var/cache/apk/*
 
-# Set timezone
+# Set timezone and logging configuration
 ENV TZ=Asia/Shanghai
+ENV DOCKER_ENV=true
+ENV LOG_TO_STDOUT=true
 RUN ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && echo $TZ > /etc/timezone
 
 # Create non-root user

@@ -73,9 +73,11 @@ services:
       HTTP_TIMEOUT: ${HTTP_TIMEOUT:-30}
       DB_MAX_CONNECTIONS: ${DB_MAX_CONNECTIONS:-10}
       
+      # 📝 日志配置
+      DOCKER_ENV: "true"                             # 标识Docker环境
+      LOG_TO_STDOUT: "true"                          # 强制输出到stdout
+      
     command: ["./usdtmore"]
-    volumes:
-      - ./logs:/app/logs                             # 日志持久化
     depends_on:
       postgres:
         condition: service_healthy
