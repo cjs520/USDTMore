@@ -527,27 +527,20 @@ func getWalletInfoETH(name string, unit string, chain string, host string, apiKe
 		}
 	}
 
-	// 将余额从最小单位转换为标准单位
-	var rawValue = resultUSDT.Get("result").String()
-	if chain == "BSC" {
-		length := len(rawValue) - 12
-		if length > 0 {
-			rawValue = rawValue[0:length]
-		}
-		if length <= 0 {
-			rawValue = "0"
-		}
+	// 注意：由于Etherscan V2 API没有直接的代币余额查询端点，
+	// 我们无法从tokentx交易记录中准确计算当前余额
+	// 这里只能显示是否有交易活动，而不是准确的余额
+
+	// 检查是否有交易记录来判断账户活跃度
+	if resultUSDT.Get("status").String() == "1" && len(resultUSDT.Get("result").Array()) > 0 {
+		// 有交易记录，表示账户有活动，但无法获取准确余额
+		balanceUSDT = big.NewFloat(-1) // -1表示有活动但余额未知
+		log.Debug(fmt.Sprintf("地址 %s 有代币交易记录，但无法通过Etherscan V2 API获取准确余额", address))
+	} else {
+		// 没有交易记录或查询失败
+		balanceUSDT = big.NewFloat(0)
+		log.Debug(fmt.Sprintf("地址 %s 无代币交易记录或查询失败", address))
 	}
-	balanceStandard, ok := new(big.Int).SetString(rawValue, 10)
-	if !ok {
-		log.Error("GetWalletInfoByAddress convert into USDT failed, rawValue:", rawValue)
-		balanceStandard = big.NewInt(0) // 设置默认值为0
-	}
-	if balanceStandard == nil {
-		balanceStandard = big.NewInt(0) // 额外的安全检查
-	}
-	balanceFloat := new(big.Float).SetInt(balanceStandard)
-	balanceUSDT = new(big.Float).Quo(balanceFloat, big.NewFloat(1e6)) // USDT 有 6 位小数
 
 	// 累计所有交易的 Value 来计算总交易量
 	var wa model.WalletAddress
