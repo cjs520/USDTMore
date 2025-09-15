@@ -51,7 +51,8 @@ CREATE TABLE IF NOT EXISTS trade_orders (
 CREATE TABLE IF NOT EXISTS notify_record (
     id BIGSERIAL PRIMARY KEY,
     txid VARCHAR(255) NOT NULL,
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
 -- =============================================================================
@@ -61,7 +62,7 @@ CREATE TABLE IF NOT EXISTS notify_record (
 -- 清理可能存在的重复数据和约束冲突
 DO $$ 
 BEGIN
-    -- 删除可能存在的旧约束
+    -- 删除可能存在的旧约束和索引
     DROP INDEX IF EXISTS uni_trade_orders_trade_hash;
     DROP INDEX IF EXISTS uni_trade_orders_trade_hash_non_empty;
     DROP INDEX IF EXISTS uni_trade_orders_concurrent;
@@ -83,6 +84,16 @@ BEGIN
         );
     END IF;
     
+    -- 删除可能存在的order_id约束（避免重复创建）
+    IF EXISTS (
+        SELECT 1 FROM information_schema.table_constraints 
+        WHERE constraint_name = 'uni_trade_orders_order_id' 
+        AND table_name = 'trade_orders'
+        AND constraint_type = 'UNIQUE'
+    ) THEN
+        ALTER TABLE trade_orders DROP CONSTRAINT uni_trade_orders_order_id;
+    END IF;
+    
     -- 扩展字段长度（如果表已存在）
     IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'trade_orders') THEN
         -- 扩展地址字段长度
@@ -94,6 +105,17 @@ BEGIN
     IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'wallet_address') THEN
         -- 扩展钱包地址字段长度
         ALTER TABLE wallet_address ALTER COLUMN address TYPE VARCHAR(64);
+    END IF;
+    
+    -- 修复notify_record表结构
+    IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'notify_record') THEN
+        -- 添加updated_at字段（如果不存在）
+        IF NOT EXISTS (
+            SELECT 1 FROM information_schema.columns 
+            WHERE table_name = 'notify_record' AND column_name = 'updated_at'
+        ) THEN
+            ALTER TABLE notify_record ADD COLUMN updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP;
+        END IF;
     END IF;
     
     -- 清理空的trade_hash值
