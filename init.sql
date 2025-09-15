@@ -185,6 +185,8 @@ ORDER BY tablename, indexname;
 
 -- 检查数据完整性
 DO $$
+DECLARE
+    rec RECORD;
 BEGIN
     IF EXISTS (SELECT FROM information_schema.tables WHERE table_name = 'trade_orders') THEN
         RAISE NOTICE '=== 订单状态统计 ===';
@@ -200,6 +202,8 @@ BEGIN
         LOOP
             RAISE NOTICE '状态: %, 数量: %, 最早: %, 最新: %', rec.status, rec.count, rec.oldest, rec.newest;
         END LOOP;
+    ELSE
+        RAISE NOTICE 'trade_orders表不存在，跳过数据完整性检查';
     END IF;
 END $$;
 
