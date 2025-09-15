@@ -241,3 +241,73 @@ Telegram 搜索`@myidbot`机器人并启用，`/getid`返回的ID就是`TG_BOT_A
 - ⚠️ 内存占用 1-2GB，配置复杂n
 
 ### Telegram Bot配置
+
+## 🔍 Etherscan V2 Transaction API 集成
+
+项目已集成Etherscan V2 Transaction API，提供增强的交易验证功能，确保订单处理的可靠性和准确性。
+
+### 交易验证方法
+
+1. **Transaction Receipt Status** (`gettxreceiptstatus`)
+   - **用途**: 检查交易执行状态  
+   - **适用**: Byzantium分叉后的交易
+   - **响应**: `status` (1=成功, 0=失败)
+   - **优先级**: 首选方法
+
+2. **Contract Execution Status** (`getstatus`)
+   - **用途**: 检查智能合约执行状态
+   - **适用**: 所有交易  
+   - **响应**: `isError` (0=成功, 1=失败)
+   - **优先级**: 备用方法
+
+### API格式
+
+```
+https://api.etherscan.io/v2/api
+?chainid={CHAIN_ID}
+&module=transaction
+&action={ACTION}
+&txhash={TX_HASH}
+&apikey={API_KEY}
+```
+
+### 支持的链ID
+
+| 链名称 | Chain ID | 说明 |
+|--------|----------|------|
+| Polygon | 137 | Polygon主网 |
+| BSC | 56 | Binance Smart Chain |
+| Optimism | 10 | Optimism主网 |
+| Arbitrum | 42161 | Arbitrum One |
+| X-Layer | 196 | X-Layer主网 |
+| Ethereum | 1 | 以太坊主网 |
+
+### 配置要求
+
+启用交易验证功能需要设置以下环境变量：
+
+```bash
+# 必需: Etherscan V2 API密钥  
+ETHERSCAN_API_KEY=your_api_key_here
+
+# 可选: 启用交易确认验证 (默认false)
+TRADE_IS_CONFIRMED=true
+```
+
+### 使用方式
+
+**自动集成** (推荐，零代码修改):
+```bash
+export ETHERSCAN_API_KEY=your_key_here
+export TRADE_IS_CONFIRMED=true
+# 系统会自动在后台进行交易验证
+```
+
+### 核心特性
+
+- ✅ **双重验证**: Receipt Status → Contract Status 智能降级
+- ✅ **完全向后兼容**: 验证失败不影响现有业务流程  
+- ✅ **批量处理**: 支持多交易并发验证
+- ✅ **速率限制保护**: 200ms间隔 + 指数退避重试
+- ✅ **企业级可靠性**: 完整的错误处理和恢复机制
+

@@ -10,7 +10,7 @@ import (
 var logger *logrus.Logger
 
 func init() {
-	var level, logFile = logrus.InfoLevel, config.GetOutputLog()
+	var level = logrus.InfoLevel
 	logger = logrus.New()
 	logger.SetFormatter(&logrus.TextFormatter{
 		ForceColors:     true,
@@ -21,13 +21,8 @@ func init() {
 
 	logger.SetLevel(level)
 
-	output, err := os.OpenFile(logFile, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0666)
-	if err != nil {
-
-		panic(err)
-	}
-
-	logger.SetOutput(output)
+	// 输出到标准输出而不是文件
+	logger.SetOutput(os.Stdout)
 }
 
 func Debug(args ...interface{}) {
