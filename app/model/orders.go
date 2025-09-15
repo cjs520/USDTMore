@@ -22,15 +22,15 @@ var _calcMutex sync.Mutex
 
 type TradeOrders struct {
 	Id          int64     `gorm:"primary_key;AUTO_INCREMENT;comment:id"`
-	OrderId     string    `gorm:"type:varchar(255);not null;unique;color:blue;comment:客户订单ID"`
-	TradeId     string    `gorm:"type:varchar(255);not null;unique;color:blue;comment:本地订单ID"`
+	OrderId     string    `gorm:"type:varchar(255);not null;comment:客户订单ID"`
+	TradeId     string    `gorm:"type:varchar(255);not null;comment:本地订单ID"`
 	TradeHash   string    `gorm:"type:varchar(128);default:'';comment:交易哈希"`
 	UsdtRate    string    `gorm:"type:varchar(10);not null;comment:USDT汇率"`
 	Amount      string    `gorm:"type:decimal(10,2);not null;default:0;comment:USDT交易数额"`
 	Money       float64   `gorm:"type:decimal(10,2);not null;default:0;comment:订单交易金额"`
 	Chain       string    `gorm:"type:varchar(255);not null;comment:链路名称 TRON POLY OP BSC"`
-	Address     string    `gorm:"type:varchar(34);not null;comment:收款地址"`
-	FromAddress string    `gorm:"type:varchar(34);not null;default:'';comment:支付地址"`
+	Address     string    `gorm:"type:varchar(64);not null;comment:收款地址"`
+	FromAddress string    `gorm:"type:varchar(64);not null;default:'';comment:支付地址"`
 	Status      int       `gorm:"type:smallint;not null;default:0;comment:交易状态 1：等待支付 2：支付成功 3：订单过期"`
 	ReturnUrl   string    `gorm:"type:varchar(255);not null;default:'';comment:同步地址"`
 	NotifyUrl   string    `gorm:"type:varchar(255);not null;default:'';comment:异步地址"`

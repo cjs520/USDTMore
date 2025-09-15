@@ -61,10 +61,10 @@ func Init() error {
 	default:
 		return fmt.Errorf("unsupported database type: %s. Only 'postgres' is supported in this version", dbType)
 	}
-	if _err = AutoMigrate(); _err != nil {
-
-		return _err
-	}
+	// 跳过AutoMigrate，使用init.sql处理数据库结构
+	// if _err = AutoMigrate(); _err != nil {
+	//	return _err
+	// }
 
 	addStartWalletAddress()
 
@@ -72,5 +72,6 @@ func Init() error {
 }
 
 func AutoMigrate() error {
-	return DB.AutoMigrate(&WalletAddress{}, &TradeOrders{}, &NotifyRecord{})
+	// 禁用自动创建约束，避免与init.sql冲突
+	return DB.Set("gorm:table_options", "").AutoMigrate(&WalletAddress{}, &TradeOrders{}, &NotifyRecord{})
 }
