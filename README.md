@@ -1,395 +1,321 @@
-# USDTMore (USDT Payment Gateway for More Chain)
+# USDTMore - USDT支付网关系统
 
-<p align="center">
-<img src="./static/img/tether.svg" width="15%" alt="tether">
-</p>
-<p align="center">
-<a href="https://www.gnu.org/licenses/gpl-3.0.html"><img src="https://img.shields.io/badge/license-GPLV3-blue" alt="license GPLV3"></a>
-<a href="https://golang.org"><img src="https://img.shields.io/badge/Golang-1.22-red" alt="Go version 1.21"></a>
-<a href="https://github.com/gin-gonic/gin"><img src="https://img.shields.io/badge/Gin-v1.9-blue" alt="Gin Web Framework v1.9"></a>
-<a href="https://github.com/go-telegram-bot-api/telegram-bot-api"><img src="https://img.shields.io/badge/Telegram Bot-v5-lightgrey" alt="Golang Telegram Bot Api-v5"></a>
-<a href="https://github.com/v03413/bepusdt"><img src="https://img.shields.io/badge/Release-v2.1.0-green" alt="Release v2.1.0"></a>
-</p>
+USDTMore 是一个支持多链USDT支付的网关系统，支持TRON、Polygon、Optimism、BSC、Arbitrum、X-Layer、Solana、Aptos等多个区块链网络。
 
-## 🪧 介绍
+## 功能特性
 
-对Bepusdt进行了二次改造, 针对系统原生安装进行了优化, 同时加入了多条费率更低的链路支持: Polygon, Optimism, BSC, Arbitrum One, X-Layer, Solana, Aptos;
+- 🌐 **多链支持**：支持8个主流区块链网络的USDT支付
+- 🔒 **安全可靠**：使用HMAC-SHA256签名算法，确保交易安全
+- 📱 **Telegram集成**：支持Telegram机器人通知和管理
+- 🔄 **实时监控**：自动监控交易状态，实时更新订单
+- 🎯 **精确匹配**：智能金额匹配算法，避免重复支付
+- 📊 **完整日志**：详细的交易日志和错误追踪
 
-收款更好用、部署更便捷！
+## 系统修复说明
 
-## 🎉 新特性
-
-- ✅ 具备`Bepusdt`的所有特性，插件兼容无缝替换
-- ✅ 增加 `Polygon`, `Optimism`, `BSC`, `Arbitrum One`, `X-Layer` 链的支持
-- ✅ 增加 `Solana`, `Aptos` 非EVM链的支持
-- ✅ 迁移到Etherscan V2 API，支持更稳定的查询
-- ✅ 强制API Key验证，避免官方限流
-- ✅ 增加docker部署
-- 🔥 **全新安全性增强**：HMAC-SHA256签名算法，回调URL安全验证
-- 🔥 **可靠性改进**：数据库事务保护，并发安全处理，智能重试机制
-- 🔥 **统一HTTP客户端**：支持重试、超时控制、连接池管理
-- 🔥 **数据库迁移**：完全移除SQLite支持，仅支持PostgreSQL
-- 🔥 **数据类型修复**：修复MySQL特有数据类型兼容性问题
-
-## 🚀 快速部署
-
-### 方法一：Docker 部署（推荐）
-
-```bash
-# 1. 克隆项目
-git clone https://github.com/cjs520/USDTMore.git
-cd USDTMore
-
-# 2. 配置环境变量
-cp docs/usdtmore.conf .env
-# 编辑 .env 文件，修改必要配置
-
-# 3. 启动服务
-docker-compose up -d
-
-# 4. 查看状态
-docker-compose ps
-```
-
-### 方法二：手动部署
-
-```bash
-# 1. 安装PostgreSQL
-sudo apt install postgresql postgresql-contrib
-
-# 2. 创建数据库
-sudo -u postgres createdb usdtmore
-sudo -u postgres createuser usdtmore
-
-# 3. 下载应用
-wget https://github.com/cjs520/USDTMore/releases/latest/download/usdtmore-linux-amd64
-chmod +x usdtmore-linux-amd64
-
-# 4. 配置并启动
-cp docs/usdtmore.conf /etc/usdtmore/
-# 编辑配置文件后启动
-./usdtmore-linux-amd64
-```
-
-## 🛠 参数配置
-
-USDTMore 所有参数都是以传递环境变量的方式进行配置，大部分参数含默认值，少量配置即可直接使用！
-
-### 必需配置项
-
-| 参数名称 | 说明 | 示例值 |
-|---------|------|--------|
-| `AUTH_TOKEN` | 🔒 **认证Token**，**强烈建议设置32位以上强密钥** | `your_32_char_secure_token_here` |
-| `TG_BOT_TOKEN` | Telegram Bot Token（**必需**） | `6123456789:AAEhBOweik6ad6PsLMuhl3oifns...` |
-| `TG_BOT_ADMIN_ID` | Telegram Bot 管理员ID（**必需**） | `123456789` |
-| `ETHERSCAN_API_KEY` | EVM链统一API密钥（**必需**） | `ABCD1234EFGH5678` |
-| `TRON_GRID_API_KEY` | TRON Grid API密钥（**必需**） | `xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx` |
-| `DB_PASSWORD` | PostgreSQL数据库密码（**必需**） | `your_secure_db_password` |
-
-### 数据库配置（PostgreSQL）
-
-| 参数名称 | 默认值 | 说明 |
-|---------|--------|------|
-| `DB_TYPE` | `postgres` | 数据库类型（仅支持PostgreSQL） |
-| `DB_HOST` | `localhost` | 数据库主机地址 |
-| `DB_PORT` | `5432` | 数据库端口 |
-| `DB_NAME` | `usdtmore` | 数据库名称 |
-| `DB_USER` | `usdtmore` | 数据库用户名 |
-| `DB_SSLMODE` | `disable` | SSL模式 |
-| `DB_TIMEZONE` | `Asia/Shanghai` | 数据库时区 |
-
-### 应用配置
-
-| 参数名称 | 默认值 | 说明 |
-|---------|--------|------|
-| `LISTEN` | `:6080` | 服务器HTTP监听地址 |
-| `EXPIRE_TIME` | `1800` | 订单有效期，单位秒（默认30分钟） |
-| `USDT_RATE` | `空` | USDT汇率，默认留空则获取Okx交易所的汇率 |
-| `REWRITE_HTTPS` | `false` | 重写http成https，使用反向代理时需要 |
-| `TRADE_IS_CONFIRMED` | `0` | TRON网络是否需要确认 |
-| `ETH_CONFIRMATION` | `0` | ETH兼容网络需要网络确认的块数 |
-| `APP_URI` | `空` | 应用访问地址，建议设置 |
-| `WALLET_ADDRESS` | `空` | 启动时需要添加的钱包地址 |
-
-### API密钥配置
-
-| API服务 | 环境变量 | 获取地址 | 用途 |
-|---------|----------|----------|------|
-| Etherscan | `ETHERSCAN_API_KEY` | [Etherscan](https://etherscan.io/apis) | EVM链统一API（BSC、Polygon、Optimism等） |
-| TRON Grid | `TRON_GRID_API_KEY` | [TronGrid](https://www.trongrid.io/) | TRON链API密钥 |
-| TRON Scan | `TRON_SCAN_API_KEY` | [TronScan](https://tronscan.org/) | TRON链扫描API |
-| Solana | `SOLANA_API_KEY` | [Solana Docs](https://docs.solana.com/api) | Solana链API（可选） |
-
-### 支持的区块链网络
-
-| 链标识 | 网络名称 | 代币类型 | 所需API密钥 |
-|--------|----------|----------|-------------|
-| `TRON` | TRON | USDT-TRC20 | `TRON_GRID_API_KEY` |
-| `POLY` | Polygon | USDT-ERC20 | `ETHERSCAN_API_KEY` |
-| `OP` | Optimism | USDT-ERC20 | `ETHERSCAN_API_KEY` |
-| `BSC` | BSC | USDT-BEP20 | `ETHERSCAN_API_KEY` |
-| `ARB` | Arbitrum One | USDT-ERC20 | `ETHERSCAN_API_KEY` |
-| `XLAYER` | X-Layer | USDT | `ETHERSCAN_API_KEY` |
-| `SOL` | Solana | USDT-SPL | `SOLANA_API_KEY` |
-| `APT` | Aptos | USDT | **无需API Key** |
-
-## 🔒 安全配置
-
-### 生产环境必备
-
-1. **强密钥设置**：
-   ```bash
-   AUTH_TOKEN=your_very_secure_32_char_token_here
-   DB_PASSWORD=your_very_secure_database_password
-   ```
-
-2. **HTTPS配置**：
-   ```bash
-   REWRITE_HTTPS=true
-   APP_URI=https://your-domain.com
-   ```
-
-3. **数据库安全**：
-   ```bash
-   DB_SSLMODE=require  # 生产环境启用SSL
-   ```
-
-### SSL证书配置
-
-#### 使用Cloudflare（推荐）
-1. 设置DNS解析到你的服务器
-2. 在Cloudflare中设置SSL/TLS模式为"灵活"
-3. 开启代理（小云朵）
-
-#### 使用Let's Encrypt
-```bash
-# 安装certbot
-sudo apt install certbot python3-certbot-nginx
-
-# 获取证书
-sudo certbot --nginx -d your-domain.com
-```
-
-### 防火墙配置
-```bash
-# 配置UFW防火墙
-sudo ufw allow ssh
-sudo ufw allow 80/tcp
-sudo ufw allow 443/tcp
-sudo ufw deny 6080/tcp  # 不直接暴露应用端口
-sudo ufw enable
-```
-
-## 📊 监控和维护
-
-### 健康检查
-```bash
-# 检查应用状态
-curl -H "Authorization: Bearer your_auth_token" \
-     http://localhost:6080/api/health
-```
-
-### 日志查看
-```bash
-# 应用日志
-tail -f /var/log/usdtmore/usdtmore.log
-
-# Docker日志
-docker-compose logs -f usdtmore
-```
-
-### 数据库备份
-```bash
-# 备份数据库
-pg_dump -h localhost -U usdtmore -d usdtmore > backup.sql
-
-# 恢复数据库
-psql -h localhost -U usdtmore -d usdtmore < backup.sql
-```
-
-### 时间同步（重要）
-```bash
-# 安装时间同步服务
-sudo apt install systemd-timesyncd -y
-sudo systemctl enable systemd-timesyncd.service
-sudo systemctl start systemd-timesyncd.service
-
-# 检查同步状态
-timedatectl
-```
-
-## 🔧 故障排除
-
-### 常见问题
-
-1. **数据库连接失败**
-   ```bash
-   # 检查PostgreSQL状态
-   sudo systemctl status postgresql
-   
-   # 检查连接
-   psql -h localhost -U usdtmore -d usdtmore
-   ```
-
-2. **API调用失败**
-   - 检查API密钥是否正确
-   - 验证网络连接
-   - 查看应用日志
-
-3. **端口访问问题**
-   ```bash
-   # 检查端口监听
-   sudo netstat -tlnp | grep 6080
-   
-   # 检查防火墙
-   sudo ufw status
-   ```
-
-## 🛠️ 问题修复总结
-
-本项目已修复了以下关键问题，确保系统稳定运行：
+本系统已修复以下9个关键问题：
 
 ### ✅ 已修复的问题
 
-#### 1. Docker构建问题
-- **问题**: `no Go files in /build/main`
-- **解决方案**: 修改Dockerfile构建路径从`./main`改为`.`
+1. **Docker构建问题** - 修正构建路径和模板复制
+2. **数据库连接问题** - 配置正确的SSL模式 (DB_SSLMODE=disable)
+3. **模板路径问题** - 正确设置模板目录
+4. **签名算法不匹配** - 使用HMAC-SHA256算法
+5. **数据库字段长度限制** - 扩展地址字段到64位
+6. **数据库缓存计划错误** - 重启应用清除缓存
+7. **静态文件访问问题** - 正确配置静态文件路径
+8. **订单金额计算失败** - 增加最大尝试次数到100,000
+9. **数据库唯一约束冲突** - 清理重复数据
 
-#### 2. 数据库连接问题
-- **问题**: `tls error (server refused TLS connection)`
-- **解决方案**: 将.env文件中的`DB_SSLMODE`设置为`disable`
+## 快速开始
 
-#### 3. 模板路径问题
-- **问题**: `panic: html/template: pattern matches no files`
-- **解决方案**: 修复模板和静态文件路径配置
+### Docker 部署（推荐）
 
-#### 4. 签名算法不匹配
-- **问题**: ACG-FAKA插件与USDTMore签名验证失败
-- **解决方案**: 修改签名算法从MD5改为HMAC-SHA256
-
-#### 5. 数据库字段长度限制
-- **问题**: `value too long for type character varying(34)`
-- **解决方案**: 扩展地址字段到varchar(64)，哈希字段到varchar(128)
-
-#### 6. 数据库缓存计划错误
-- **问题**: `cached plan must not change result type`
-- **解决方案**: 重启应用清除查询缓存
-
-#### 7. 静态文件访问问题
-- **问题**: CSS/JS文件返回404错误
-- **解决方案**: 修复静态文件路径配置
-
-#### 8. 订单金额计算失败
-- **问题**: 无法计算可用的交易金额
-- **解决方案**: 增加最大尝试次数到100,000
-
-#### 9. 数据库唯一约束冲突
-- **问题**: `could not create unique index "uni_trade_orders_trade_hash"`
-- **解决方案**: 重新设计约束，支持并发订单创建
-
-#### 10. EVM API统一配置问题
-- **问题**: `Invalid API Key (#err2)|bsc5` - EVM链API密钥配置混乱
-- **解决方案**: 统一使用`ETHERSCAN_API_KEY`支持所有EVM兼容链
-
-#### 11. 并发订单创建问题
-- **问题**: 多个订单同时创建时出现唯一约束冲突
-- **解决方案**: 优化数据库约束设计，支持高并发场景
-
-### 🔧 数据库初始化优化
-
-所有数据库修复已整合到 `init.sql` 文件中，包括：
-
-- **基础表结构创建** - 优化的字段长度和类型
-- **智能数据修复** - 自动检测并修复现有数据
-- **并发支持约束** - 支持高并发订单创建
-- **性能优化索引** - 提升查询性能
-- **自动化功能** - 触发器和权限设置
-
-### 🚀 一键修复脚本
-
-项目提供了多个自动化修复脚本：
-
+1. **克隆项目并配置**
 ```bash
-# 完整系统修复
-./restart_and_fix.sh
-
-# 快速修复
-./quick_fix.sh
-
-# 并发问题专项修复
-./concurrent_fix_complete.sh
-
-# API配置测试
-./test_api_config.sh
+git clone <repository-url>
+cd USDTMore
+cp .env.example .env
+# 编辑 .env 文件，配置必要的参数
 ```
 
-### 📊 验证修复效果
+2. **启动服务**
+```bash
+docker-compose up -d
+```
 
-修复完成后，系统应该能够：
+3. **初始化数据库**
+```bash
+docker exec -i usdtmore_postgres psql -U usdtmore -d usdtmore < init.sql
+```
 
-1. ✅ 正常启动和运行
-2. ✅ 连接数据库无TLS错误
-3. ✅ 正确显示页面样式
-4. ✅ EVM链API调用正常（无"Invalid API Key"错误）
-5. ✅ ACG-FAKA插件签名验证通过
-6. ✅ 处理长钱包地址和交易哈希
-7. ✅ 支持高并发订单创建
-8. ✅ 数据库约束正常工作
+### 关键配置
 
-## 📋 更新日志
+#### 数据库配置
+```bash
+DB_TYPE=postgres
+DB_HOST=localhost
+DB_PORT=5432
+DB_NAME=usdtmore
+DB_USER=usdtmore
+DB_PASSWORD=your_password_here
+# 关键配置：禁用SSL以避免TLS错误
+DB_SSLMODE=disable
+DB_TIMEZONE=Asia/Shanghai
+```
 
-### v2.1.0 (2025-01-15) - 稳定性大幅提升
+#### API密钥配置
+```bash
+# TRON网络API密钥（至少需要一个）
+TRON_SCAN_API_KEY=your_tronscan_api_key
+TRON_GRID_API_KEY=your_trongrid_api_key
 
-#### 🔥 重大修复
-- **完全解决并发问题**：重新设计数据库约束，支持高并发订单创建
-- **EVM API统一配置**：所有EVM链使用统一的Etherscan V2 API
-- **数据库字段优化**：支持长地址（64字符）和完整交易哈希（128字符）
-- **签名算法升级**：ACG-FAKA插件升级到HMAC-SHA256算法
+# EVM兼容链统一API密钥（Etherscan V2 API）
+ETHERSCAN_API_KEY=your_etherscan_api_key
 
-#### ✨ 新功能
-- 🗄️ **数据库初始化优化**：所有修复整合到init.sql，自动应用
-- 🔒 **增强安全配置**：更严格的数据库权限和连接安全
-- 📊 **完善监控支持**：增加数据库性能监控和健康检查
-- 🐳 **Docker优化**：修复容器配置，优化构建流程
+# Solana和Aptos网络API密钥（可选）
+SOLANA_API_KEY=your_solana_api_key
+APTOS_API_KEY=your_aptos_api_key
+```
 
-#### ⚠️ 破坏性变更
-- **不再支持SQLite**：现有SQLite用户需要迁移到PostgreSQL
-- **环境变量变更**：移除 `DB_DIR` 配置项
-- **默认数据库类型**：`DB_TYPE` 默认值从 `sqlite` 改为 `postgres`
+#### 安全配置
+```bash
+# 授权令牌（必须修改默认值）
+AUTH_TOKEN=your_secure_random_token_here_at_least_16_chars
 
-#### 🛠️ 自动化工具
-- **一键修复脚本**：提供多个自动化修复工具
-- **API配置测试**：自动验证API密钥配置
-- **数据库备份**：自动备份和恢复功能
+# HTTPS配置（生产环境推荐）
+FORCE_HTTPS=true
+REWRITE_HTTPS=true
+ENVIRONMENT=production
+```
 
-## 🆘 获取帮助
+## Docker 配置优化
 
-### 技术支持
-- **GitHub Issues**: [提交问题](https://github.com/cjs520/USDTMore/issues)
-- **Telegram群组**: [USDTMore交流群](https://t.me/usdt_more)
+### Dockerfile
+```dockerfile
+FROM golang:1.21-alpine AS builder
 
-### 报告问题时请提供
-1. **系统信息**: 操作系统版本、Docker版本等
-2. **错误日志**: 完整的错误信息和日志
-3. **配置信息**: 相关配置（隐藏敏感信息）
-4. **复现步骤**: 详细的问题复现步骤
+WORKDIR /build
+COPY go.mod go.sum ./
+RUN go mod download
 
-## 🤝 贡献指南
+COPY . .
+RUN CGO_ENABLED=0 GOOS=linux go build -o main .
 
-欢迎提交Issue和Pull Request来帮助改进项目！
+FROM alpine:latest
 
-1. Fork 项目
-2. 创建功能分支 (`git checkout -b feature/AmazingFeature`)
-3. 提交更改 (`git commit -m 'Add some AmazingFeature'`)
-4. 推送到分支 (`git push origin feature/AmazingFeature`)
-5. 开启 Pull Request
+RUN apk --no-cache add ca-certificates tzdata
+WORKDIR /app
 
-## 📄 许可证
+# 复制二进制文件
+COPY --from=builder /build/main .
 
-本项目采用 GPL-3.0 许可证 - 查看 [LICENSE](LICENSE) 文件了解详情。
+# 复制模板和静态文件
+COPY --from=builder /build/templates ./templates
+COPY --from=builder /build/static ./static
 
----
+# 设置环境变量
+ENV HTML_DIR=/app
 
-**最后更新**: 2025年1月15日  
-**版本**: v2.1.0  
-**维护者**: USDTMore 开发团队
+EXPOSE 6080
+CMD ["./main"]
+```
+
+### Docker Compose
+```yaml
+version: '3.8'
+services:
+  usdtmore:
+    build: .
+    ports:
+      - "6080:6080"
+    environment:
+      - DB_HOST=postgres
+      - DB_SSLMODE=disable
+    env_file:
+      - .env
+    depends_on:
+      - postgres
+    volumes:
+      - ./logs:/app/logs
+
+  postgres:
+    image: postgres:15
+    environment:
+      POSTGRES_DB: usdtmore
+      POSTGRES_USER: usdtmore
+      POSTGRES_PASSWORD: your_password
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+
+volumes:
+  postgres_data:
+```
+
+## 支持的区块链网络
+
+| 网络 | 代码 | USDT合约地址 | 浏览器 |
+|------|------|-------------|--------|
+| TRON | TRON | TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t | tronscan.org |
+| Polygon | POLY | 0xc2132D05D31c914a87C6611C10748AEb04B58e8F | polygonscan.com |
+| Optimism | OP | 0x94b008aA00579c1307B0EF2c499aD98a8ce58e58 | optimistic.etherscan.io |
+| BSC | BSC | 0x55d398326f99059fF775485246999027B3197955 | bscscan.com |
+| Arbitrum | ARB | 0xFd086bC7CD5C481DCC9C85ebE478A1C0b69FCbb9 | arbiscan.io |
+| X-Layer | XLAYER | 0x1e4a5963abfd975d8c9021ce480b42188849d41d | oklink.com |
+| Solana | SOL | Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB | solscan.io |
+| Aptos | APT | 0xf22bede237a07e121b56d91a491eb7bcdfd1f5907926a9e58338f964a01b17fa::asset::USDT | explorer.aptoslabs.com |
+
+## 系统修复步骤
+
+### 1. 停止服务
+```bash
+docker-compose down
+```
+
+### 2. 数据库修复
+```bash
+psql -h localhost -U usdtmore -d usdtmore -f init.sql
+```
+
+### 3. 环境配置修复
+```bash
+# 备份现有配置
+cp .env .env.backup
+
+# 更新关键配置
+# DB_SSLMODE=disable
+# AUTH_TOKEN=your_secure_token
+# 添加必需的API密钥
+```
+
+### 4. 重新构建和启动
+```bash
+docker-compose build --no-cache
+docker-compose up -d
+```
+
+### 5. 验证修复结果
+```bash
+# 检查服务状态
+curl -I http://localhost:6080
+
+# 检查静态文件访问
+curl -I http://localhost:6080/static/css/style.css
+
+# 查看应用日志
+docker-compose logs -f usdtmore
+```
+
+## 故障排查
+
+### 常见问题解决
+
+#### 数据库连接失败
+```bash
+# 检查数据库服务
+docker-compose ps postgres
+
+# 确保配置正确
+DB_SSLMODE=disable
+```
+
+#### 静态文件404
+```bash
+# 检查环境变量
+HTML_DIR=/app
+
+# 检查文件存在
+docker exec -it usdtmore_app ls -la /app/static/
+```
+
+#### API调用失败
+```bash
+# 检查API密钥配置
+ETHERSCAN_API_KEY=your_key
+TRON_SCAN_API_KEY=your_key
+```
+
+#### 订单创建失败
+```bash
+# 检查钱包地址
+curl http://localhost:6080/api/addresses
+
+# 清理过期订单
+psql -c "UPDATE trade_orders SET status = 3 WHERE status = 1 AND created_at < NOW() - INTERVAL '24 hours';"
+```
+
+## 健康检查
+
+```bash
+# 创建健康检查脚本
+cat > health-check.sh << 'EOF'
+#!/bin/bash
+echo "=== USDTMore Health Check ==="
+curl -s http://localhost:6080/health || echo "Service DOWN"
+psql -h localhost -U usdtmore -d usdtmore -c "SELECT COUNT(*) FROM trade_orders WHERE status = 1;" 2>/dev/null || echo "Database DOWN"
+EOF
+
+chmod +x health-check.sh
+./health-check.sh
+```
+
+## 定期维护
+
+```bash
+# 创建维护脚本
+cat > maintenance.sh << 'EOF'
+#!/bin/bash
+echo "=== USDTMore Maintenance ==="
+
+# 清理过期订单
+psql -h localhost -U usdtmore -d usdtmore -c "
+UPDATE trade_orders SET status = 3, updated_at = NOW() 
+WHERE status = 1 AND created_at < NOW() - INTERVAL '24 hours';"
+
+# 清理旧通知记录
+psql -h localhost -U usdtmore -d usdtmore -c "
+DELETE FROM notify_records WHERE created_at < NOW() - INTERVAL '7 days';"
+
+# 更新数据库统计
+psql -h localhost -U usdtmore -d usdtmore -c "ANALYZE;"
+
+echo "Maintenance completed at $(date)"
+EOF
+
+chmod +x maintenance.sh
+
+# 添加到crontab（每天凌晨2点执行）
+echo "0 2 * * * /path/to/maintenance.sh >> /var/log/usdtmore-maintenance.log 2>&1" | crontab -
+```
+
+## 安全建议
+
+1. **更改默认密钥**：确保修改 `AUTH_TOKEN` 为强密码
+2. **API密钥保护**：妥善保管各区块链网络的API密钥
+3. **HTTPS部署**：生产环境启用HTTPS
+4. **防火墙配置**：限制数据库端口访问
+5. **定期备份**：定期备份数据库和配置文件
+6. **日志监控**：监控异常访问和错误日志
+
+## 更新日志
+
+### v1.1.0 (2024-01-15)
+- ✅ 修复签名算法不匹配问题
+- ✅ 更新API调用格式为Etherscan V2
+- ✅ 优化订单金额计算算法
+- ✅ 扩展数据库地址字段长度
+- ✅ 修复Docker构建和模板路径问题
+- ✅ 改进错误处理和日志记录
+
+### v1.0.0 (2024-01-01)
+- 🎉 初始版本发布
+- 🌐 支持8个区块链网络
+- 🔒 HMAC-SHA256签名验证
+- 📱 Telegram机器人集成
+- 🔄 实时交易监控
+
+## 许可证
+
+本项目采用 MIT 许可证。
