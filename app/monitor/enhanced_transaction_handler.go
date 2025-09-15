@@ -98,7 +98,7 @@ func (eth *EnhancedTransactionHandler) ProcessTransactionBatch(ctx context.Conte
 		if err != nil {
 			log.Warn(fmt.Sprintf("批量交易验证失败: %v", err))
 		} else {
-			for i, result := range verifyResults {
+for _, result := range verifyResults {
 				if !result.IsSuccess {
 					log.Warn(fmt.Sprintf("交易验证显示失败: chain=%s, txhash=%s, error=%s", 
 						result.Chain, result.TxHash, result.ErrorMessage))

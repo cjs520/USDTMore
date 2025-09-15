@@ -1,7 +1,6 @@
 package log
 
 import (
-	"USDTMore/app/config"
 	"github.com/sirupsen/logrus"
 	"io"
 	"os"
