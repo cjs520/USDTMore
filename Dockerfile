@@ -47,15 +47,15 @@ RUN addgroup -g 1001 -S usdtmore && \
 # Copy the binary
 COPY --from=builder /build/usdtmore /app/usdtmore
 
-# Copy wait script and make it executable
-COPY --from=builder /build/wait-for-db.sh /app/wait-for-db.sh
+# Copy deploy script and make it executable
+COPY --from=builder /build/deploy.sh /app/deploy.sh
 
 # Copy static files and templates
 COPY --from=builder /build/templates /app/templates
 COPY --from=builder /build/static /app/static
 
 # Set permissions
-RUN chmod +x /app/usdtmore /app/wait-for-db.sh && \
+RUN chmod +x /app/usdtmore /app/deploy.sh && \
     mkdir -p /app/logs && \
     chown -R usdtmore:usdtmore /app
 
