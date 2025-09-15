@@ -38,24 +38,45 @@ generate_random_string() {
 wait_for_database() {
     local host=${1:-localhost}
     local port=${2:-5432}
-    local timeout=${3:-30}
+    local timeout=${3:-60}
     
     log_info "等待数据库 $host:$port 启动..."
     
-    for i in $(seq 1 $timeout); do
-        if nc -z "$host" "$port" > /dev/null 2>&1; then
-            log_success "数据库 $host:$port 已就绪！"
-            return 0
-        fi
+    # 如果是Docker环境，使用docker-compose检查服务状态
+    if command -v docker-compose &> /dev/null && [ -f "docker-compose.yml" ]; then
+        log_info "检测到Docker环境，使用docker-compose检查服务状态..."
         
-        if [ $i -eq $timeout ]; then
-            log_error "等待数据库 $host:$port 超时 ($timeout 秒)"
-            return 1
-        fi
-        
-        echo "等待数据库启动... ($i/$timeout)"
-        sleep 1
-    done
+        for i in $(seq 1 $timeout); do
+            if docker-compose ps postgres | grep -q "Up.*healthy"; then
+                log_success "数据库服务已就绪！"
+                return 0
+            fi
+            
+            if [ $i -eq $timeout ]; then
+                log_error "等待数据库服务超时 ($timeout 秒)"
+                return 1
+            fi
+            
+            echo "等待数据库服务启动... ($i/$timeout)"
+            sleep 1
+        done
+    else
+        # 传统的端口检查方式
+        for i in $(seq 1 $timeout); do
+            if nc -z "$host" "$port" > /dev/null 2>&1; then
+                log_success "数据库 $host:$port 已就绪！"
+                return 0
+            fi
+            
+            if [ $i -eq $timeout ]; then
+                log_error "等待数据库 $host:$port 超时 ($timeout 秒)"
+                return 1
+            fi
+            
+            echo "等待数据库启动... ($i/$timeout)"
+            sleep 1
+        done
+    fi
 }
 
 # 检查Docker环境
@@ -366,8 +387,15 @@ deploy() {
     docker-compose up -d
     
     # 等待数据库启动
-    sleep 10
-    wait_for_database postgres 5432
+    log_info "等待服务启动..."
+    sleep 15
+    
+    # 检查服务健康状态
+    if docker-compose ps | grep -q "Up.*healthy"; then
+        log_success "所有服务已启动并健康"
+    else
+        log_warning "服务可能还在启动中，请稍后检查状态"
+    fi
     
     init_database
     
