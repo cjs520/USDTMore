@@ -161,8 +161,12 @@ CREATE INDEX IF NOT EXISTS idx_wallet_address_chain_address ON wallet_address(ch
 CREATE INDEX IF NOT EXISTS idx_wallet_address_status ON wallet_address(status);
 
 -- 订单表的核心约束（支持并发）
-CREATE UNIQUE INDEX IF NOT EXISTS uni_trade_orders_order_id ON trade_orders(order_id);
-CREATE UNIQUE INDEX IF NOT EXISTS uni_trade_orders_trade_id ON trade_orders(trade_id);
+-- 删除可能存在的旧约束，然后重新创建
+DROP INDEX IF EXISTS uni_trade_orders_order_id;
+CREATE UNIQUE INDEX uni_trade_orders_order_id ON trade_orders(order_id);
+
+DROP INDEX IF EXISTS uni_trade_orders_trade_id;
+CREATE UNIQUE INDEX uni_trade_orders_trade_id ON trade_orders(trade_id);
 
 -- 只对非空trade_hash创建唯一约束，允许多个NULL值
 CREATE UNIQUE INDEX IF NOT EXISTS uni_trade_orders_trade_hash_when_not_null 
