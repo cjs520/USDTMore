@@ -891,9 +891,19 @@ func getUsdtTransByETH(chain string, address string) (gjson.Result, error) {
 		resultTx := gjson.ParseBytes(allTx)
 
 		// 检查API响应状态
-		if resultTx.Get("status").String() != "1" {
-			log.Error(fmt.Sprintf("[%s] Etherscan API错误: %s", chain, resultTx.Get("message").String()))
-			return gjson.Result{}, fmt.Errorf("Etherscan API错误: %s", resultTx.Get("message").String())
+		status := resultTx.Get("status").String()
+		message := resultTx.Get("message").String()
+
+		// "No transactions found"是正常情况，不应该当作错误
+		if status != "1" && !strings.Contains(strings.ToLower(message), "no transactions found") {
+			log.Error(fmt.Sprintf("[%s] Etherscan API错误: %s", chain, message))
+			return gjson.Result{}, fmt.Errorf("Etherscan API错误: %s", message)
+		}
+
+		// 如果没有找到交易，返回空结果但不报错
+		if strings.Contains(strings.ToLower(message), "no transactions found") {
+			log.Debug(fmt.Sprintf("[%s] 地址 %s 暂无新交易", chain, address))
+			return gjson.Result{}, nil
 		}
 
 		// 更新StartBlock - 处理最新的区块号，避免重复查询
