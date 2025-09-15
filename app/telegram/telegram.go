@@ -71,6 +71,20 @@ func SendMsg(msg tgbotapi.MessageConfig) {
 	}
 
 	msg.ChatID = chatId
+	// 确保ReplyMarkup为nil或正确的类型，避免inline_keyboard类型错误
+	if msg.ReplyMarkup != nil {
+		// 验证ReplyMarkup是否为有效的InlineKeyboardMarkup
+		if keyboard, ok := msg.ReplyMarkup.(tgbotapi.InlineKeyboardMarkup); ok {
+			// 验证InlineKeyboard是否为有效的数组
+			if keyboard.InlineKeyboard == nil {
+				msg.ReplyMarkup = nil
+			}
+		} else {
+			// 如果不是InlineKeyboardMarkup类型，清除ReplyMarkup
+			msg.ReplyMarkup = nil
+		}
+	}
+	
 	_, err = botApi.Send(msg)
 	if err != nil {
 		log.Error("发送消息到管理员失败:", err)

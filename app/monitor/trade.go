@@ -26,7 +26,7 @@ const usdtToken = "TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t"
 func TradeStart() {
 	log.Info("交易监控启动.")
 
-	ticker := time.NewTicker(time.Second * 5)
+	ticker := time.NewTicker(time.Second * 15)
 	defer ticker.Stop()
 
 	for range ticker.C {
