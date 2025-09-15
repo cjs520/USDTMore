@@ -761,30 +761,59 @@ func getUsdtTrc20TransByTronGrid(_toAddress string) (gjson.Result, error) {
 func requestAddress(baseUrl string, query string) []byte {
 	var url = baseUrl + "?" + query
 	var client = help.GetShortTimeoutClient()
-	resp, err := client.Get(url)
-	if err != nil {
-		log.Error("GetWalletInfoByAddress client.Get(url)", err)
-		return nil
-	}
+	
+	// 添加速率限制处理，避免API调用过于频繁
+	maxRetries := 3
+	for attempt := 1; attempt <= maxRetries; attempt++ {
+		resp, err := client.Get(url)
+		if err != nil {
+			log.Error("GetWalletInfoByAddress client.Get(url)", err)
+			if attempt < maxRetries {
+				time.Sleep(time.Duration(attempt) * time.Second) // 指数退避
+				continue
+			}
+			return nil
+		}
 
-	defer resp.Body.Close()
-	if resp.StatusCode != 200 {
-		log.Error("GetWalletInfoByAddress resp.StatusCode != 200", resp.StatusCode, err)
-		return nil
+		defer resp.Body.Close()
+		
+		// 处理不同的HTTP状态码
+		switch resp.StatusCode {
+		case 200:
+			all, err := io.ReadAll(resp.Body)
+			if err != nil {
+				log.Error("GetWalletInfoByAddress io.ReadAll(resp.Body)", err)
+				return nil
+			}
+			return all
+		case 429: // 速率限制
+			log.Warn(fmt.Sprintf("API速率限制，等待重试 (attempt %d/%d)", attempt, maxRetries))
+			if attempt < maxRetries {
+				time.Sleep(time.Duration(attempt*2) * time.Second) // 增加等待时间
+				continue
+			}
+			fallthrough
+		default:
+			log.Error("GetWalletInfoByAddress HTTP error", resp.StatusCode)
+			if attempt < maxRetries {
+				time.Sleep(time.Duration(attempt) * time.Second)
+				continue
+			}
+			return nil
+		}
 	}
-
-	all, err := io.ReadAll(resp.Body)
-	if err != nil {
-		log.Error("GetWalletInfoByAddress io.ReadAll(resp.Body)", err)
-		return nil
-	}
-	//result := gjson.ParseBytes(all)
-
-	return all
+	
+	return nil
 }
 
 /*
-所有ETH兼容链路的到账监控，使用Etherscan V2 API避免服务中断
+所有ETH兼容链路的到账监控
+已修复的问题：
+1. 使用各链专用API端点替代通用etherscan
+2. 移除不必要的chainid参数（符合Etherscan API规范）
+3. 增强错误处理和API响应验证
+4. 添加速率限制和重试机制
+支持的链：Polygon, BSC, Optimism, Arbitrum, X-Layer
 */
 func getUsdtTransByETH(chain string, address string) (gjson.Result, error) {
 	// 累计所有交易的 Value 来计算总交易量
@@ -796,10 +825,10 @@ func getUsdtTransByETH(chain string, address string) (gjson.Result, error) {
 	var apiKey string
 	var contractAddress string
 
-	// 根据链类型设置API端点、chainid和相关配置，并强制验证API Key
+	// 根据链类型设置API端点和相关配置，使用各链专用的API端点
 	switch chain {
 	case "POLY":
-		host = "https://api.etherscan.io/v2/api"  // Polygon使用Etherscan V2 API
+		host = "https://api.polygonscan.com/api"  // Polygon专用API端点
 		chainId = "137" // Polygon chainid
 		apiKey = config.GetPolygonScanApiKey()
 		if apiKey == "" {
@@ -807,7 +836,7 @@ func getUsdtTransByETH(chain string, address string) (gjson.Result, error) {
 		}
 		contractAddress = config.GetPolygonScanContractAddress()
 	case "OP":
-		host = "https://api.etherscan.io/v2/api"  // Optimism使用Etherscan V2 API
+		host = "https://api-optimistic.etherscan.io/api"  // Optimism专用API端点
 		chainId = "10" // Optimism chainid
 		apiKey = config.GetOptimismExplorerApiKey()
 		if apiKey == "" {
@@ -815,7 +844,7 @@ func getUsdtTransByETH(chain string, address string) (gjson.Result, error) {
 		}
 		contractAddress = config.GetOptimismExplorerContractAddress()
 	case "BSC":
-		host = "https://api.etherscan.io/v2/api"  // BSC使用Etherscan V2 Multichain API
+		host = "https://api.bscscan.com/api"  // BSC专用API端点
 		chainId = "56" // BSC chainid
 		apiKey = config.GetBscExplorerApiKey()
 		if apiKey == "" {
@@ -823,7 +852,7 @@ func getUsdtTransByETH(chain string, address string) (gjson.Result, error) {
 		}
 		contractAddress = config.GetBscExplorerContractAddress()
 	case "ARB":
-		host = "https://api.etherscan.io/v2/api"  // Arbitrum使用Etherscan V2 API
+		host = "https://api.arbiscan.io/api"  // Arbitrum专用API端点
 		chainId = "42161" // Arbitrum One chainid
 		apiKey = config.GetArbitrumScanApiKey()
 		if apiKey == "" {
@@ -831,7 +860,7 @@ func getUsdtTransByETH(chain string, address string) (gjson.Result, error) {
 		}
 		contractAddress = config.GetArbitrumContractAddress()
 	case "XLAYER":
-		host = "https://api.etherscan.io/v2/api"  // X-Layer使用Etherscan V2 API
+		host = "https://www.oklink.com/api/explorer/v1/xlayer"  // X-Layer使用OKLink API
 		chainId = "196" // X-Layer chainid
 		apiKey = config.GetXLayerApiKey()
 		if apiKey == "" {
@@ -843,10 +872,35 @@ func getUsdtTransByETH(chain string, address string) (gjson.Result, error) {
 	}
 
 	if model.DB.Where("chain = ? and address = ?", chain, address).First(&wa).Error == nil {
-		// 统一使用Etherscan V2 API格式（所有链都需要chainid参数）
-		var queryTx = "chainid=" + chainId + "&module=account&action=tokentx&contractaddress=" + contractAddress + "&address=" + address + "&page=1&offset=100&startblock=" + strconv.FormatInt(wa.StartBlock+1, 10) + "&endblock=" + strconv.FormatInt(wa.StartBlock+999999999999, 10) + "&sort=asc&apikey=" + apiKey
+		// 构建API查询参数，根据链类型使用不同的格式
+		var queryTx string
+		if chain == "XLAYER" {
+			// X-Layer使用OKLink API格式
+			queryTx = "chainShortName=xlayer&address=" + address + "&protocolType=token_20&tokenContractAddress=" + contractAddress + "&page=1&limit=100&isFromOrTo=false"
+		} else {
+			// 其他链使用标准Etherscan API格式（不需要chainid参数）
+			queryTx = "module=account&action=tokentx&contractaddress=" + contractAddress + "&address=" + address + "&page=1&offset=100&startblock=" + strconv.FormatInt(wa.StartBlock+1, 10) + "&endblock=" + strconv.FormatInt(wa.StartBlock+999999999999, 10) + "&sort=asc&apikey=" + apiKey
+		}
 		allTx := requestAddress(host, queryTx)
 		resultTx := gjson.ParseBytes(allTx)
+
+		// 验证API响应状态
+		if chain == "XLAYER" {
+			// OKLink API响应验证
+			if resultTx.Get("code").String() != "0" {
+				return gjson.Result{}, fmt.Errorf("[%s] OKLink API错误: %s", chain, resultTx.Get("msg").String())
+			}
+		} else {
+			// Etherscan API响应验证
+			status := resultTx.Get("status").String()
+			if status == "0" {
+				errorMsg := resultTx.Get("message").String()
+				// 忽略"No transactions found"错误，这是正常情况
+				if errorMsg != "No transactions found" {
+					return gjson.Result{}, fmt.Errorf("[%s] Etherscan API错误: %s", chain, errorMsg)
+				}
+			}
+		}
 
 		// 更新StartBlock - 处理最新的区块号，避免重复查询
 		if resultTx.Get("result").IsArray() && len(resultTx.Get("result").Array()) > 0 {
