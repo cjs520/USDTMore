@@ -1,4 +1,5 @@
-version: '3.8'
+# USDTMore Docker Compose Configuration
+# Version removed as it's obsolete in newer Docker Compose versions
 
 services:
   postgres:
@@ -72,7 +73,7 @@ services:
       HTTP_TIMEOUT: ${HTTP_TIMEOUT:-30}
       DB_MAX_CONNECTIONS: ${DB_MAX_CONNECTIONS:-10}
       
-    command: ["./wait-for-db.sh", "postgres", "5432", "./usdtmore"]
+    command: ["./usdtmore"]
     volumes:
       - ./logs:/app/logs                             # 日志持久化
     depends_on:
