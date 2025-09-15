@@ -5,8 +5,10 @@ import (
 	"USDTMore/app/help"
 	"USDTMore/app/log"
 	"USDTMore/app/model"
+	"encoding/json"
 	"fmt"
 	"io"
+	"io/ioutil"
 	"math/big"
 	"net/http"
 	"net/url"
@@ -659,4 +661,109 @@ func getWalletInfoByOPTAddress(address string) string {
 */
 func getWalletInfoByBSCAddress(address string) string {
 	return getWalletInfoETH("BEP20", "BNB", "BSC", "https://api.etherscan.io/v2/api", config.GetEtherscanApiKey(), config.GetBscExplorerContractAddress(), address)
+}
+
+// verifyTransactionStatus 验证交易状态 - 使用Etherscan V2 Stats API
+func verifyTransactionStatus(txHash string, chainId string, apiKey string) (bool, string, error) {
+	// 检查交易收据状态
+	statusURL := fmt.Sprintf("https://api.etherscan.io/v2/api?chainid=%s&module=transaction&action=gettxreceiptstatus&txhash=%s&apikey=%s",
+		chainId, txHash, apiKey)
+
+	resp, err := http.Get(statusURL)
+	if err != nil {
+		return false, "", fmt.Errorf("请求交易状态失败: %v", err)
+	}
+	defer resp.Body.Close()
+
+	body, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		return false, "", fmt.Errorf("读取响应失败: %v", err)
+	}
+
+	var result struct {
+		Status  string `json:"status"`
+		Message string `json:"message"`
+		Result  struct {
+			Status string `json:"status"`
+		} `json:"result"`
+	}
+
+	if err := json.Unmarshal(body, &result); err != nil {
+		return false, "", fmt.Errorf("解析响应失败: %v", err)
+	}
+
+	if result.Status != "1" {
+		return false, result.Message, nil
+	}
+
+	// status: "1" 表示成功, "0" 表示失败
+	success := result.Result.Status == "1"
+	statusMsg := "交易成功"
+	if !success {
+		statusMsg = "交易失败"
+	}
+
+	return success, statusMsg, nil
+}
+
+// verifyContractExecutionStatus 验证合约执行状态 - 使用Etherscan V2 Stats API
+func verifyContractExecutionStatus(txHash string, chainId string, apiKey string) (bool, string, error) {
+	// 检查合约执行状态
+	statusURL := fmt.Sprintf("https://api.etherscan.io/v2/api?chainid=%s&module=transaction&action=getstatus&txhash=%s&apikey=%s",
+		chainId, txHash, apiKey)
+
+	resp, err := http.Get(statusURL)
+	if err != nil {
+		return false, "", fmt.Errorf("请求合约执行状态失败: %v", err)
+	}
+	defer resp.Body.Close()
+
+	body, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		return false, "", fmt.Errorf("读取响应失败: %v", err)
+	}
+
+	var result struct {
+		Status  string `json:"status"`
+		Message string `json:"message"`
+		Result  struct {
+			IsError        string `json:"isError"`
+			ErrDescription string `json:"errDescription"`
+		} `json:"result"`
+	}
+
+	if err := json.Unmarshal(body, &result); err != nil {
+		return false, "", fmt.Errorf("解析响应失败: %v", err)
+	}
+
+	if result.Status != "1" {
+		return false, result.Message, nil
+	}
+
+	// isError: "0" 表示成功, "1" 表示失败
+	success := result.Result.IsError == "0"
+	statusMsg := "合约执行成功"
+	if !success {
+		statusMsg = fmt.Sprintf("合约执行失败: %s", result.Result.ErrDescription)
+	}
+
+	return success, statusMsg, nil
+}
+
+// getChainIdByName 根据链名称获取链ID
+func getChainIdByName(chain string) string {
+	switch chain {
+	case "POLY":
+		return "137" // Polygon
+	case "OP":
+		return "10" // Optimism
+	case "BSC":
+		return "56" // BSC
+	case "ARB":
+		return "42161" // Arbitrum One
+	case "XLAYER":
+		return "196" // X-Layer
+	default:
+		return "1" // Ethereum mainnet
+	}
 }
