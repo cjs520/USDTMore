@@ -807,12 +807,13 @@ func requestAddress(baseUrl string, query string) []byte {
 }
 
 /*
-所有ETH兼容链路的到账监控
-已修复的问题：
-1. 使用各链专用API端点替代通用etherscan
-2. 移除不必要的chainid参数（符合Etherscan API规范）
-3. 增强错误处理和API响应验证
-4. 添加速率限制和重试机制
+所有ETH兼容链路的到账监控 - 使用Etherscan V2 统一API
+特性：
+1. 统一端点：https://api.etherscan.io/v2/api
+2. chainid参数区分不同链（Polygon:137, BSC:56, OP:10, ARB:42161, XLAYER:196）
+3. 统一ETHERSCAN_API_KEY，支持多链查询
+4. 完整的错误处理和速率限制重试机制
+5. V2 API响应格式验证
 支持的链：Polygon, BSC, Optimism, Arbitrum, X-Layer
 */
 func getUsdtTransByETH(chain string, address string) (gjson.Result, error) {
@@ -825,46 +826,46 @@ func getUsdtTransByETH(chain string, address string) (gjson.Result, error) {
 	var apiKey string
 	var contractAddress string
 
-	// 根据链类型设置API端点和相关配置，使用各链专用的API端点
+	// 根据链类型设置chainid和相关配置，统一使用Etherscan V2 API端点
 	switch chain {
 	case "POLY":
-		host = "https://api.polygonscan.com/api"  // Polygon专用API端点
+		host = "https://api.etherscan.io/v2/api"  // Etherscan V2统一端点
 		chainId = "137" // Polygon chainid
-		apiKey = config.GetPolygonScanApiKey()
+		apiKey = config.GetEtherscanApiKey()  // 使用统一的ETHERSCAN_API_KEY
 		if apiKey == "" {
-			return gjson.Result{}, fmt.Errorf("POLYGON_SCAN_API_KEY是必需的，请设置环境变量")
+			return gjson.Result{}, fmt.Errorf("ETHERSCAN_API_KEY是必需的，请设置环境变量")
 		}
 		contractAddress = config.GetPolygonScanContractAddress()
 	case "OP":
-		host = "https://api-optimistic.etherscan.io/api"  // Optimism专用API端点
+		host = "https://api.etherscan.io/v2/api"  // Etherscan V2统一端点
 		chainId = "10" // Optimism chainid
-		apiKey = config.GetOptimismExplorerApiKey()
+		apiKey = config.GetEtherscanApiKey()  // 使用统一的ETHERSCAN_API_KEY
 		if apiKey == "" {
-			return gjson.Result{}, fmt.Errorf("OPTIMISM_EXPLORER_API_KEY是必需的，请设置环境变量")
+			return gjson.Result{}, fmt.Errorf("ETHERSCAN_API_KEY是必需的，请设置环境变量")
 		}
 		contractAddress = config.GetOptimismExplorerContractAddress()
 	case "BSC":
-		host = "https://api.bscscan.com/api"  // BSC专用API端点
+		host = "https://api.etherscan.io/v2/api"  // Etherscan V2统一端点
 		chainId = "56" // BSC chainid
-		apiKey = config.GetBscExplorerApiKey()
+		apiKey = config.GetEtherscanApiKey()  // 使用统一的ETHERSCAN_API_KEY
 		if apiKey == "" {
-			return gjson.Result{}, fmt.Errorf("BSC_SCAN_API_KEY是必需的，请设置环境变量")
+			return gjson.Result{}, fmt.Errorf("ETHERSCAN_API_KEY是必需的，请设置环境变量")
 		}
 		contractAddress = config.GetBscExplorerContractAddress()
 	case "ARB":
-		host = "https://api.arbiscan.io/api"  // Arbitrum专用API端点
+		host = "https://api.etherscan.io/v2/api"  // Etherscan V2统一端点
 		chainId = "42161" // Arbitrum One chainid
-		apiKey = config.GetArbitrumScanApiKey()
+		apiKey = config.GetEtherscanApiKey()  // 使用统一的ETHERSCAN_API_KEY
 		if apiKey == "" {
-			return gjson.Result{}, fmt.Errorf("ARBITRUM_SCAN_API_KEY是必需的，请设置环境变量")
+			return gjson.Result{}, fmt.Errorf("ETHERSCAN_API_KEY是必需的，请设置环境变量")
 		}
 		contractAddress = config.GetArbitrumContractAddress()
 	case "XLAYER":
-		host = "https://www.oklink.com/api/explorer/v1/xlayer"  // X-Layer使用OKLink API
+		host = "https://api.etherscan.io/v2/api"  // Etherscan V2统一端点
 		chainId = "196" // X-Layer chainid
-		apiKey = config.GetXLayerApiKey()
+		apiKey = config.GetEtherscanApiKey()  // 使用统一的ETHERSCAN_API_KEY
 		if apiKey == "" {
-			return gjson.Result{}, fmt.Errorf("XLAYER_SCAN_API_KEY是必需的，请设置环境变量")
+			return gjson.Result{}, fmt.Errorf("ETHERSCAN_API_KEY是必需的，请设置环境变量")
 		}
 		contractAddress = config.GetXLayerContractAddress()
 	default:
@@ -872,33 +873,18 @@ func getUsdtTransByETH(chain string, address string) (gjson.Result, error) {
 	}
 
 	if model.DB.Where("chain = ? and address = ?", chain, address).First(&wa).Error == nil {
-		// 构建API查询参数，根据链类型使用不同的格式
-		var queryTx string
-		if chain == "XLAYER" {
-			// X-Layer使用OKLink API格式
-			queryTx = "chainShortName=xlayer&address=" + address + "&protocolType=token_20&tokenContractAddress=" + contractAddress + "&page=1&limit=100&isFromOrTo=false"
-		} else {
-			// 其他链使用标准Etherscan API格式（不需要chainid参数）
-			queryTx = "module=account&action=tokentx&contractaddress=" + contractAddress + "&address=" + address + "&page=1&offset=100&startblock=" + strconv.FormatInt(wa.StartBlock+1, 10) + "&endblock=" + strconv.FormatInt(wa.StartBlock+999999999999, 10) + "&sort=asc&apikey=" + apiKey
-		}
+		// 使用Etherscan V2 API格式（必需chainid参数）
+		var queryTx = "chainid=" + chainId + "&module=account&action=tokentx&contractaddress=" + contractAddress + "&address=" + address + "&page=1&offset=100&startblock=" + strconv.FormatInt(wa.StartBlock+1, 10) + "&endblock=" + strconv.FormatInt(wa.StartBlock+999999999999, 10) + "&sort=asc&apikey=" + apiKey
 		allTx := requestAddress(host, queryTx)
 		resultTx := gjson.ParseBytes(allTx)
 
-		// 验证API响应状态
-		if chain == "XLAYER" {
-			// OKLink API响应验证
-			if resultTx.Get("code").String() != "0" {
-				return gjson.Result{}, fmt.Errorf("[%s] OKLink API错误: %s", chain, resultTx.Get("msg").String())
-			}
-		} else {
-			// Etherscan API响应验证
-			status := resultTx.Get("status").String()
-			if status == "0" {
-				errorMsg := resultTx.Get("message").String()
-				// 忽略"No transactions found"错误，这是正常情况
-				if errorMsg != "No transactions found" {
-					return gjson.Result{}, fmt.Errorf("[%s] Etherscan API错误: %s", chain, errorMsg)
-				}
+		// 验证Etherscan V2 API响应状态
+		status := resultTx.Get("status").String()
+		if status == "0" {
+			errorMsg := resultTx.Get("message").String()
+			// 忽略"No transactions found"错误，这是正常情况
+			if errorMsg != "No transactions found" {
+				return gjson.Result{}, fmt.Errorf("[%s] Etherscan V2 API错误: %s", chain, errorMsg)
 			}
 		}
 
