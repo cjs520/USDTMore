@@ -1,0 +1,136 @@
+groups:
+  - name: usdtmore
+    rules:
+      # Application health alerts
+      - alert: USDTMoreDown
+        expr: up{job=~"usdtmore.*"} == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "USDTMore service is down"
+          description: "USDTMore service {{ $labels.instance }} has been down for more than 1 minute."
+
+      # High response time
+      - alert: USDTMoreHighResponseTime
+        expr: histogram_quantile(0.95, http_request_duration_seconds_bucket{job=~"usdtmore.*"}) > 1
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "USDTMore high response time"
+          description: "USDTMore 95th percentile response time is {{ $value }}s on {{ $labels.instance }}"
+
+      # High error rate
+      - alert: USDTMoreHighErrorRate
+        expr: rate(http_requests_total{job=~"usdtmore.*",status=~"5.."}[5m]) > 0.05
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "USDTMore high error rate"
+          description: "USDTMore error rate is {{ $value | humanizePercentage }} on {{ $labels.instance }}"
+
+      # Database connection issues
+      - alert: DatabaseConnectionHigh
+        expr: db_connections_active / db_connections_max > 0.8
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Database connection usage high"
+          description: "Database connection usage is {{ $value | humanizePercentage }} on {{ $labels.instance }}"
+
+      # Order processing alerts
+      - alert: OrderProcessingStalled
+        expr: increase(orders_created_total[5m]) == 0 and increase(http_requests_total{endpoint="/order"}[5m]) > 0
+        for: 3m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Order processing has stalled"
+          description: "Orders are being received but not processed on {{ $labels.instance }}"
+
+      # Payment detection alerts
+      - alert: PaymentDetectionDelay
+        expr: payment_detection_delay_seconds > 300
+        for: 1m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Payment detection delay"
+          description: "Payment detection delay is {{ $value }}s on {{ $labels.instance }}"
+
+  - name: database
+    rules:
+      # Database down
+      - alert: PostgreSQLDown
+        expr: up{job="postgres-exporter"} == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "PostgreSQL is down"
+          description: "PostgreSQL database has been down for more than 1 minute."
+
+      # High CPU usage
+      - alert: PostgreSQLHighCPU
+        expr: rate(pg_stat_database_tup_returned[5m]) / rate(pg_stat_database_tup_fetched[5m]) < 0.1
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "PostgreSQL high CPU usage"
+          description: "PostgreSQL CPU usage is high on {{ $labels.instance }}"
+
+      # High connections
+      - alert: PostgreSQLTooManyConnections
+        expr: sum(pg_stat_activity_count) by (instance) / pg_settings_max_connections * 100 > 80
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "PostgreSQL too many connections"
+          description: "PostgreSQL has {{ $value }}% connections used on {{ $labels.instance }}"
+
+      # Slow queries
+      - alert: PostgreSQLSlowQueries
+        expr: pg_stat_activity_max_tx_duration > 300
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "PostgreSQL slow queries detected"
+          description: "PostgreSQL has queries running for more than 5 minutes on {{ $labels.instance }}"
+
+  - name: system
+    rules:
+      # High memory usage
+      - alert: HighMemoryUsage
+        expr: (node_memory_MemTotal_bytes - node_memory_MemAvailable_bytes) / node_memory_MemTotal_bytes * 100 > 90
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High memory usage"
+          description: "Memory usage is {{ $value }}% on {{ $labels.instance }}"
+
+      # High disk usage
+      - alert: HighDiskUsage
+        expr: (node_filesystem_size_bytes{fstype!="tmpfs"} - node_filesystem_free_bytes{fstype!="tmpfs"}) / node_filesystem_size_bytes{fstype!="tmpfs"} * 100 > 85
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High disk usage"
+          description: "Disk usage is {{ $value }}% on {{ $labels.instance }}"
+
+      # Load average
+      - alert: HighLoadAverage
+        expr: node_load1 > 2
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High load average"
+          description: "Load average is {{ $value }} on {{ $labels.instance }}"

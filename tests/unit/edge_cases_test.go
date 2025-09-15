@@ -409,7 +409,13 @@ func TestOrderAmountCalculationEdgeCases(t *testing.T) {
 
 		rate := 7.20
 		money := 100.0
-		baseAmount := decimal.NewFromFloat(money / rate).StringFixed(2)
+		// 安全的除法操作，避免除零错误
+		rateDecimal, _ := decimal.NewFromString(fmt.Sprintf("%.8f", rate))
+		moneyDecimal, _ := decimal.NewFromString(fmt.Sprintf("%.2f", money))
+		if rateDecimal.IsZero() {
+			t.Fatalf("Rate cannot be zero, rate=%.8f", rate)
+		}
+		baseAmount := moneyDecimal.Div(rateDecimal).StringFixed(2)
 
 		// 创建多个冲突的订单
 		numConflicts := 100
@@ -449,7 +455,13 @@ func TestOrderAmountCalculationEdgeCases(t *testing.T) {
 
 		rate := 7.20
 		money := 150.0
-		baseAmount := decimal.NewFromFloat(money / rate).StringFixed(2)
+		// 安全的除法操作，避免除零错误
+		rateDecimal, _ := decimal.NewFromString(fmt.Sprintf("%.8f", rate))
+		moneyDecimal, _ := decimal.NewFromString(fmt.Sprintf("%.2f", money))
+		if rateDecimal.IsZero() {
+			t.Fatalf("Rate cannot be zero, rate=%.8f", rate)
+		}
+		baseAmount := moneyDecimal.Div(rateDecimal).StringFixed(2)
 
 		// 为前两个钱包创建冲突订单
 		for i := 0; i < 2; i++ {

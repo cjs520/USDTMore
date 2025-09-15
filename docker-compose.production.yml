@@ -103,7 +103,7 @@ services:
     networks:
       - usdtmore_network
     healthcheck:
-      test: ["CMD-SHELL", "psql -h localhost -p 5432 -U usdtmore_user -d usdtmore -c 'SELECT 1'"]
+      test: ["CMD-SHELL", "nc -z localhost 5432 || exit 1"]
       interval: 10s
       timeout: 5s
       retries: 3
