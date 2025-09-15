@@ -37,143 +37,173 @@ func TradeStart() {
 			continue
 		}
 
+		// 如果没有待支付订单，跳过API查询以节省资源
+		if len(_lock) == 0 {
+			log.Debug("当前无待支付订单，跳过交易监控")
+			continue
+		}
+
+		log.Info(fmt.Sprintf("当前有 %d 个待支付订单，开始监控交易", len(_lock)))
+
+		// 统计需要监控的链
+		chainsToMonitor := make(map[string]bool)
+		for _, order := range _lock {
+			chainsToMonitor[order.Chain] = true
+		}
+
 		// 这里是TRON网络的监控
-		for _, _row := range model.GetAvailableAddress("TRON") {
-			var result gjson.Result
-			var err error
+		if chainsToMonitor["TRON"] {
+			for _, _row := range model.GetAvailableAddress("TRON") {
+				var result gjson.Result
+				var err error
 
-			if config.IsTronScanApi() {
-				result, err = getUsdtTrc20TransByTronScan(_row.Address)
-			} else {
-				result, err = getUsdtTrc20TransByTronGrid(_row.Address)
-			}
-			if err != nil {
-				log.Error(fmt.Sprintf("[TRON] 查询交易失败 %s: %v", _row.Address, err))
-				continue
-			}
+				if config.IsTronScanApi() {
+					result, err = getUsdtTrc20TransByTronScan(_row.Address)
+				} else {
+					result, err = getUsdtTrc20TransByTronGrid(_row.Address)
+				}
+				if err != nil {
+					log.Error(fmt.Sprintf("[TRON] 查询交易失败 %s: %v", _row.Address, err))
+					continue
+				}
 
-			if config.IsTronScanApi() {
-				recentTransferTotal = result.Get("total").Num
-			} else {
-				recentTransferTotal = result.Get("meta.page_size").Num
-			}
-			log.Info(fmt.Sprintf("[%s] recent transfer total: %s(%v)", config.GetTronServerApi(), _row.Address, recentTransferTotal))
-			if recentTransferTotal <= 0 { // 没有交易记录
-				continue
-			}
+				if config.IsTronScanApi() {
+					recentTransferTotal = result.Get("total").Num
+				} else {
+					recentTransferTotal = result.Get("meta.page_size").Num
+				}
+				log.Info(fmt.Sprintf("[%s] recent transfer total: %s(%v)", config.GetTronServerApi(), _row.Address, recentTransferTotal))
+				if recentTransferTotal <= 0 { // 没有交易记录
+					continue
+				}
 
-			if config.IsTronScanApi() {
-				handlePaymentTransactionForTronScan(_lock, _row.Address, result)
-				handleOtherNotifyForTronScan(_row.Address, result)
-			} else {
-				handlePaymentTransactionForTronGrid(_lock, _row.Address, result)
-				handleOtherNotifyForTronGrid(_row.Address, result)
+				if config.IsTronScanApi() {
+					handlePaymentTransactionForTronScan(_lock, _row.Address, result)
+					handleOtherNotifyForTronScan(_row.Address, result)
+				} else {
+					handlePaymentTransactionForTronGrid(_lock, _row.Address, result)
+					handleOtherNotifyForTronGrid(_row.Address, result)
+				}
 			}
 		}
 
 		// 这里是POLYGON网络的监控
-		for _, _row := range model.GetAvailableAddress("POLY") {
-			var result gjson.Result
-			var err error
+		if chainsToMonitor["POLY"] {
+			for _, _row := range model.GetAvailableAddress("POLY") {
+				var result gjson.Result
+				var err error
 
-			result, err = getUsdtPolygonTransByPolygonScan(_row.Address)
-			if err != nil {
-				log.Error(fmt.Sprintf("[POLY] 查询交易失败 %s: %v", _row.Address, err))
-				continue
+				result, err = getUsdtPolygonTransByPolygonScan(_row.Address)
+				if err != nil {
+					log.Error(fmt.Sprintf("[POLY] 查询交易失败 %s: %v", _row.Address, err))
+					continue
+				}
+
+				handlePaymentTransactionForPolygonScan(_lock, _row.Address, result)
+				handleOtherNotifyForPolygonScan(_row.Address, result)
 			}
-
-			handlePaymentTransactionForPolygonScan(_lock, _row.Address, result)
-			handleOtherNotifyForPolygonScan(_row.Address, result)
 		}
 
 		// 这里是OPTIMISM网络的监控
-		for _, _row := range model.GetAvailableAddress("OP") {
-			var result gjson.Result
-			var err error
+		if chainsToMonitor["OP"] {
+			for _, _row := range model.GetAvailableAddress("OP") {
+				var result gjson.Result
+				var err error
 
-			result, err = getUsdtOptimismTransByOptimismExplorer(_row.Address)
-			if err != nil {
-				log.Error(fmt.Sprintf("[OP] 查询交易失败 %s: %v", _row.Address, err))
-				continue
+				result, err = getUsdtOptimismTransByOptimismExplorer(_row.Address)
+				if err != nil {
+					log.Error(fmt.Sprintf("[OP] 查询交易失败 %s: %v", _row.Address, err))
+					continue
+				}
+
+				handlePaymentTransactionForOptimismExplorer(_lock, _row.Address, result)
+				handleOtherNotifyForOptimismExplorer(_row.Address, result)
 			}
-
-			handlePaymentTransactionForOptimismExplorer(_lock, _row.Address, result)
-			handleOtherNotifyForOptimismExplorer(_row.Address, result)
 		}
 
 		// 这里是BSC网络的监控
-		for _, _row := range model.GetAvailableAddress("BSC") {
-			var result gjson.Result
-			var err error
+		if chainsToMonitor["BSC"] {
+			for _, _row := range model.GetAvailableAddress("BSC") {
+				var result gjson.Result
+				var err error
 
-			result, err = getUsdtBscTransByBscScan(_row.Address)
-			if err != nil {
-				log.Error(fmt.Sprintf("[BSC] 查询交易失败 %s: %v", _row.Address, err))
-				continue
+				result, err = getUsdtBscTransByBscScan(_row.Address)
+				if err != nil {
+					log.Error(fmt.Sprintf("[BSC] 查询交易失败 %s: %v", _row.Address, err))
+					continue
+				}
+
+				handlePaymentTransactionForBscScan(_lock, _row.Address, result)
+				handleOtherNotifyForBscScan(_row.Address, result)
 			}
-
-			handlePaymentTransactionForBscScan(_lock, _row.Address, result)
-			handleOtherNotifyForBscScan(_row.Address, result)
 		}
 
 		// 这里是Arbitrum One网络的监控
-		for _, _row := range model.GetAvailableAddress("ARB") {
-			var result gjson.Result
-			var err error
+		if chainsToMonitor["ARB"] {
+			for _, _row := range model.GetAvailableAddress("ARB") {
+				var result gjson.Result
+				var err error
 
-			result, err = getUsdtArbitrumTransByArbitrumScan(_row.Address)
-			if err != nil {
-				log.Error(fmt.Sprintf("[ARB] 查询交易失败 %s: %v", _row.Address, err))
-				continue
+				result, err = getUsdtArbitrumTransByArbitrumScan(_row.Address)
+				if err != nil {
+					log.Error(fmt.Sprintf("[ARB] 查询交易失败 %s: %v", _row.Address, err))
+					continue
+				}
+
+				handlePaymentTransactionForArbitrumScan(_lock, _row.Address, result)
+				handleOtherNotifyForArbitrumScan(_row.Address, result)
 			}
-
-			handlePaymentTransactionForArbitrumScan(_lock, _row.Address, result)
-			handleOtherNotifyForArbitrumScan(_row.Address, result)
 		}
 
 		// 这里是X-Layer网络的监控
-		for _, _row := range model.GetAvailableAddress("XLAYER") {
-			var result gjson.Result
-			var err error
+		if chainsToMonitor["XLAYER"] {
+			for _, _row := range model.GetAvailableAddress("XLAYER") {
+				var result gjson.Result
+				var err error
 
-			result, err = getUsdtXLayerTransByXLayerScan(_row.Address)
-			if err != nil {
-				log.Error(fmt.Sprintf("[XLAYER] 查询交易失败 %s: %v", _row.Address, err))
-				continue
+				result, err = getUsdtXLayerTransByXLayerScan(_row.Address)
+				if err != nil {
+					log.Error(fmt.Sprintf("[XLAYER] 查询交易失败 %s: %v", _row.Address, err))
+					continue
+				}
+
+				handlePaymentTransactionForXLayerScan(_lock, _row.Address, result)
+				handleOtherNotifyForXLayerScan(_row.Address, result)
 			}
-
-			handlePaymentTransactionForXLayerScan(_lock, _row.Address, result)
-			handleOtherNotifyForXLayerScan(_row.Address, result)
 		}
 
 		// 这里是Solana网络的监控
-		for _, _row := range model.GetAvailableAddress("SOL") {
-			var result gjson.Result
-			var err error
+		if chainsToMonitor["SOL"] {
+			for _, _row := range model.GetAvailableAddress("SOL") {
+				var result gjson.Result
+				var err error
 
-			result, err = getUsdtSolanaTransBySolscan(_row.Address)
-			if err != nil {
-				log.Error(fmt.Sprintf("[SOL] 查询交易失败 %s: %v", _row.Address, err))
-				continue
+				result, err = getUsdtSolanaTransBySolscan(_row.Address)
+				if err != nil {
+					log.Error(fmt.Sprintf("[SOL] 查询交易失败 %s: %v", _row.Address, err))
+					continue
+				}
+
+				handlePaymentTransactionForSolana(_lock, _row.Address, result)
+				handleOtherNotifyForSolana(_row.Address, result)
 			}
-
-			handlePaymentTransactionForSolana(_lock, _row.Address, result)
-			handleOtherNotifyForSolana(_row.Address, result)
 		}
 
 		// 这里是Aptos网络的监控
-		for _, _row := range model.GetAvailableAddress("APT") {
-			var result gjson.Result
-			var err error
+		if chainsToMonitor["APT"] {
+			for _, _row := range model.GetAvailableAddress("APT") {
+				var result gjson.Result
+				var err error
 
-			result, err = getUsdtAptosTransByAptosLabs(_row.Address)
-			if err != nil {
-				log.Error(fmt.Sprintf("[APT] 查询交易失败 %s: %v", _row.Address, err))
-				continue
+				result, err = getUsdtAptosTransByAptosLabs(_row.Address)
+				if err != nil {
+					log.Error(fmt.Sprintf("[APT] 查询交易失败 %s: %v", _row.Address, err))
+					continue
+				}
+
+				handlePaymentTransactionForAptos(_lock, _row.Address, result)
+				handleOtherNotifyForAptos(_row.Address, result)
 			}
-
-			handlePaymentTransactionForAptos(_lock, _row.Address, result)
-			handleOtherNotifyForAptos(_row.Address, result)
 		}
 	}
 }
