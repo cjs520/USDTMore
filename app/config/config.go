@@ -27,6 +27,10 @@ const defaultHttpTimeout = 30 // HTTP请求默认超时时间（秒）
 const defaultMaxRetries = 3   // 默认最大重试次数
 const defaultRetryDelay = 1   // 默认重试延迟（秒）
 
+// API Key轮询相关变量
+var etherscanApiKeys []string
+var currentKeyIndex int
+
 // 当前路径
 var runPath string
 
@@ -168,31 +172,78 @@ func IsTronScanApi() bool {
 }
 
 /*
-获得Etherscan V2 API密钥（EVM兼容链统一使用）
-支持的链：Polygon, Optimism, BSC, Arbitrum, X-Layer
+初始化Etherscan API Keys
 */
-func GetEtherscanApiKey() string {
-	// 优先使用统一的ETHERSCAN_API_KEY
-	if data := help.GetEnv("ETHERSCAN_API_KEY"); data != "" {
-		return strings.TrimSpace(data)
-	}
+func initEtherscanApiKeys() {
+	etherscanApiKeys = []string{}
+	currentKeyIndex = 0
 
-	// 向后兼容：依次尝试旧的各链专用API Key
-	keys := []string{
-		"POLYGON_SCAN_API_KEY",
-		"OPTIMISM_EXPLORER_API_KEY",
-		"BSC_SCAN_API_KEY",
-		"ARBITRUM_SCAN_API_KEY",
-		"XLAYER_SCAN_API_KEY",
-	}
-
-	for _, key := range keys {
-		if data := help.GetEnv(key); data != "" {
-			return strings.TrimSpace(data)
+	// 支持最多3个API Key轮询使用
+	for i := 1; i <= 3; i++ {
+		var keyName string
+		if i == 1 {
+			keyName = "ETHERSCAN_API_KEY"
+		} else {
+			keyName = fmt.Sprintf("ETHERSCAN_API_KEY_%d", i)
+		}
+		
+		if data := help.GetEnv(keyName); data != "" {
+			etherscanApiKeys = append(etherscanApiKeys, strings.TrimSpace(data))
 		}
 	}
 
-	return ""
+	// 向后兼容：依次尝试旧的各链专用API Key
+	if len(etherscanApiKeys) == 0 {
+		keys := []string{
+			"POLYGON_SCAN_API_KEY",
+			"OPTIMISM_EXPLORER_API_KEY",
+			"BSC_SCAN_API_KEY",
+			"ARBITRUM_SCAN_API_KEY",
+			"XLAYER_SCAN_API_KEY",
+		}
+
+		for _, key := range keys {
+			if data := help.GetEnv(key); data != "" {
+				etherscanApiKeys = append(etherscanApiKeys, strings.TrimSpace(data))
+				break // 只取第一个找到的作为兼容性支持
+			}
+		}
+	}
+}
+
+/*
+获得Etherscan V2 API密钥（EVM兼容链统一使用）
+支持的链：Polygon, Optimism, BSC, Arbitrum, X-Layer
+支持多个API Key轮询使用
+*/
+func GetEtherscanApiKey() string {
+	if len(etherscanApiKeys) == 0 {
+		initEtherscanApiKeys()
+	}
+	
+	if len(etherscanApiKeys) == 0 {
+		return ""
+	}
+	
+	// 如果只有一个API Key，直接返回
+	if len(etherscanApiKeys) == 1 {
+		return etherscanApiKeys[0]
+	}
+	
+	// 轮询使用多个API Key
+	key := etherscanApiKeys[currentKeyIndex]
+	currentKeyIndex = (currentKeyIndex + 1) % len(etherscanApiKeys)
+	return key
+}
+
+/*
+获取当前可用的Etherscan API Key数量
+*/
+func GetEtherscanApiKeyCount() int {
+	if len(etherscanApiKeys) == 0 {
+		initEtherscanApiKeys()
+	}
+	return len(etherscanApiKeys)
 }
 
 /*

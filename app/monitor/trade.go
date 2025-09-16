@@ -89,86 +89,106 @@ func TradeStart() {
 
 		// 这里是POLYGON网络的监控
 		if chainsToMonitor["POLY"] {
-			for _, _row := range model.GetAvailableAddress("POLY") {
+			// 获取有待支付订单的POLY地址
+			addressesWithOrders := getAddressesWithPendingOrders(_lock, "POLY")
+			log.Info(fmt.Sprintf("[POLY] 需要监控的地址数量: %d", len(addressesWithOrders)))
+			
+			for _, address := range addressesWithOrders {
 				var result gjson.Result
 				var err error
 
-				result, err = getUsdtPolygonTransByPolygonScan(_row.Address)
+				result, err = getUsdtPolygonTransByPolygonScan(address)
 				if err != nil {
-					log.Error(fmt.Sprintf("[POLY] 查询交易失败 %s: %v", _row.Address, err))
+					log.Error(fmt.Sprintf("[POLY] 查询交易失败 %s: %v", address, err))
 					continue
 				}
 
-				handlePaymentTransactionForPolygonScan(_lock, _row.Address, result)
-				handleOtherNotifyForPolygonScan(_row.Address, result)
+				handlePaymentTransactionForPolygonScan(_lock, address, result)
+				handleOtherNotifyForPolygonScan(address, result)
 			}
 		}
 
 		// 这里是OPTIMISM网络的监控
 		if chainsToMonitor["OP"] {
-			for _, _row := range model.GetAvailableAddress("OP") {
+			// 获取有待支付订单的OP地址
+			addressesWithOrders := getAddressesWithPendingOrders(_lock, "OP")
+			log.Info(fmt.Sprintf("[OP] 需要监控的地址数量: %d", len(addressesWithOrders)))
+			
+			for _, address := range addressesWithOrders {
 				var result gjson.Result
 				var err error
 
-				result, err = getUsdtOptimismTransByOptimismExplorer(_row.Address)
+				result, err = getUsdtOptimismTransByOptimismExplorer(address)
 				if err != nil {
-					log.Error(fmt.Sprintf("[OP] 查询交易失败 %s: %v", _row.Address, err))
+					log.Error(fmt.Sprintf("[OP] 查询交易失败 %s: %v", address, err))
 					continue
 				}
 
-				handlePaymentTransactionForOptimismExplorer(_lock, _row.Address, result)
-				handleOtherNotifyForOptimismExplorer(_row.Address, result)
+				handlePaymentTransactionForOptimismExplorer(_lock, address, result)
+				handleOtherNotifyForOptimismExplorer(address, result)
 			}
 		}
 
 		// 这里是BSC网络的监控
 		if chainsToMonitor["BSC"] {
-			for _, _row := range model.GetAvailableAddress("BSC") {
+			// 获取有待支付订单的BSC地址
+			addressesWithOrders := getAddressesWithPendingOrders(_lock, "BSC")
+			log.Info(fmt.Sprintf("[BSC] 需要监控的地址数量: %d", len(addressesWithOrders)))
+			
+			for _, address := range addressesWithOrders {
 				var result gjson.Result
 				var err error
 
-				result, err = getUsdtBscTransByBscScan(_row.Address)
+				result, err = getUsdtBscTransByBscScan(address)
 				if err != nil {
-					log.Error(fmt.Sprintf("[BSC] 查询交易失败 %s: %v", _row.Address, err))
+					log.Error(fmt.Sprintf("[BSC] 查询交易失败 %s: %v", address, err))
 					continue
 				}
 
-				handlePaymentTransactionForBscScan(_lock, _row.Address, result)
-				handleOtherNotifyForBscScan(_row.Address, result)
+				handlePaymentTransactionForBscScan(_lock, address, result)
+				handleOtherNotifyForBscScan(address, result)
 			}
 		}
 
 		// 这里是Arbitrum One网络的监控
 		if chainsToMonitor["ARB"] {
-			for _, _row := range model.GetAvailableAddress("ARB") {
+			// 获取有待支付订单的ARB地址
+			addressesWithOrders := getAddressesWithPendingOrders(_lock, "ARB")
+			log.Info(fmt.Sprintf("[ARB] 需要监控的地址数量: %d", len(addressesWithOrders)))
+			
+			for _, address := range addressesWithOrders {
 				var result gjson.Result
 				var err error
 
-				result, err = getUsdtArbitrumTransByArbitrumScan(_row.Address)
+				result, err = getUsdtArbitrumTransByArbitrumScan(address)
 				if err != nil {
-					log.Error(fmt.Sprintf("[ARB] 查询交易失败 %s: %v", _row.Address, err))
+					log.Error(fmt.Sprintf("[ARB] 查询交易失败 %s: %v", address, err))
 					continue
 				}
 
-				handlePaymentTransactionForArbitrumScan(_lock, _row.Address, result)
-				handleOtherNotifyForArbitrumScan(_row.Address, result)
+				handlePaymentTransactionForArbitrumScan(_lock, address, result)
+				handleOtherNotifyForArbitrumScan(address, result)
 			}
 		}
 
 		// 这里是X-Layer网络的监控
 		if chainsToMonitor["XLAYER"] {
-			for _, _row := range model.GetAvailableAddress("XLAYER") {
+			// 获取有待支付订单的XLAYER地址
+			addressesWithOrders := getAddressesWithPendingOrders(_lock, "XLAYER")
+			log.Info(fmt.Sprintf("[XLAYER] 需要监控的地址数量: %d", len(addressesWithOrders)))
+			
+			for _, address := range addressesWithOrders {
 				var result gjson.Result
 				var err error
 
-				result, err = getUsdtXLayerTransByXLayerScan(_row.Address)
+				result, err = getUsdtXLayerTransByXLayerScan(address)
 				if err != nil {
-					log.Error(fmt.Sprintf("[XLAYER] 查询交易失败 %s: %v", _row.Address, err))
+					log.Error(fmt.Sprintf("[XLAYER] 查询交易失败 %s: %v", address, err))
 					continue
 				}
 
-				handlePaymentTransactionForXLayerScan(_lock, _row.Address, result)
-				handleOtherNotifyForXLayerScan(_row.Address, result)
+				handlePaymentTransactionForXLayerScan(_lock, address, result)
+				handleOtherNotifyForXLayerScan(address, result)
 			}
 		}
 
@@ -234,6 +254,28 @@ func getAllPendingOrders() (map[string]model.TradeOrders, error) {
 		_lock[order.Chain+order.Address+standardAmount] = order
 	}
 	return _lock, nil
+}
+
+/*
+获取指定链上有待支付订单的地址列表
+*/
+func getAddressesWithPendingOrders(orders map[string]model.TradeOrders, chain string) []string {
+	addressSet := make(map[string]bool)
+	
+	// 从待支付订单中提取该链的地址
+	for _, order := range orders {
+		if order.Chain == chain {
+			addressSet[order.Address] = true
+		}
+	}
+	
+	// 转换为切片
+	addresses := make([]string, 0, len(addressSet))
+	for address := range addressSet {
+		addresses = append(addresses, address)
+	}
+	
+	return addresses
 }
 
 // 处理支付交易 TronScan

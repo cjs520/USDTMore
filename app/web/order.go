@@ -89,7 +89,7 @@ func CreateTransaction(ctx *gin.Context) {
 		"amount":          _money,
 		"actual_amount":   _amount,
 		"token":           address.Address,
-		"expiration_time": _expiredAt.Second(),
+		"expiration_time": _expiredAt.Unix(),
 		"payment_url":     fmt.Sprintf("%s/pay/checkout-counter/%s", config.GetAppUri(_host), _tradeId),
 	}))
 	log.Info(fmt.Sprintf("订单创建成功，商户订单号：%s", _orderId))

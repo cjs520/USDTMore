@@ -39,6 +39,14 @@ func main() {
 	log.Info("🚀 USDTMore 启动中...")
 	log.Info("📋 版本:", AppVersion)
 
+	// 显示API Key配置信息
+	apiKeyCount := config.GetEtherscanApiKeyCount()
+	if apiKeyCount > 0 {
+		log.Info(fmt.Sprintf("🔑 Etherscan API Key配置: %d个密钥轮询使用", apiKeyCount))
+	} else {
+		log.Warn("⚠️  未配置Etherscan API Key，EVM链交易查询将失败")
+	}
+
 	// 显示配置警告
 	warnings := config.ValidateSecurityConfig()
 	if len(warnings) > 0 {

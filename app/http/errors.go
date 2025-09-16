@@ -73,6 +73,9 @@ func IsRetryableError(err error) bool {
 		"service unavailable",
 		"bad gateway",
 		"gateway timeout",
+		"server too busy",
+		"unexpected error",
+		"etherscan api错误",
 	}
 
 	for _, retryable := range retryableErrors {
