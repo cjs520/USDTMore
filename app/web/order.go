@@ -81,7 +81,7 @@ func CreateTransaction(ctx *gin.Context) {
 
 	// 创建交易订单
 	var _tradeId = help.GenerateTradeId()
-	var _expiredAt = time.Now().Add(config.GetExpireTime() * time.Second)
+	var _expiredAt = time.Now().Add(config.GetExpireTime())
 	var _orderData = model.TradeOrders{
 		OrderId:     _orderId,
 		TradeId:     _tradeId,

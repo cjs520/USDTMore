@@ -13,7 +13,7 @@ import (
 	"github.com/shopspring/decimal"
 )
 
-const defaultExpireTime = 600         // 订单默认有效期 10分钟
+const defaultExpireTime = 600 * time.Second         // 订单默认有效期 10分钟
 const defaultUsdtRate = 7.4           // 默认汇率
 const defaultAuthToken = "123234"     // 默认授权码
 const defaultListen = ":6080"         // 默认监听地址
@@ -26,6 +26,12 @@ const defaultPaymentMaxAmount = 99999 //
 const defaultHttpTimeout = 30 // HTTP请求默认超时时间（秒）
 const defaultMaxRetries = 3   // 默认最大重试次数
 const defaultRetryDelay = 1   // 默认重试延迟（秒）
+
+// Web3 API提供商常量
+const WEB3_PROVIDER_MORALIS = "MORALIS"
+const WEB3_PROVIDER_QUICKNODE = "QUICKNODE"
+const WEB3_PROVIDER_ALCHEMY = "ALCHEMY"
+const WEB3_PROVIDER_ETHERSCAN = "ETHERSCAN" // 默认Etherscan V2
 
 // API Key轮询相关变量
 var etherscanApiKeys []string
@@ -110,7 +116,7 @@ func GetExpireTime() time.Duration {
 	if ret := help.GetEnv("EXPIRE_TIME"); ret != "" {
 		sec, err := strconv.Atoi(ret)
 		if err == nil && sec > 0 {
-			return time.Duration(sec)
+			return time.Duration(sec) * time.Second
 		}
 	}
 
@@ -371,6 +377,90 @@ func GetSolanaContractAddress() string {
 */
 func GetAptosContractAddress() string {
 	return tokenAptosContractAddress
+}
+
+/*
+获取BSC Web3 API提供商类型
+支持: MORALIS, QUICKNODE, ALCHEMY, ETHERSCAN
+默认: ETHERSCAN (向后兼容)
+*/
+func GetBscWeb3Provider() string {
+	if data := help.GetEnv("BSC_WEB3_PROVIDER"); data != "" {
+		provider := strings.ToUpper(strings.TrimSpace(data))
+		switch provider {
+		case WEB3_PROVIDER_MORALIS, WEB3_PROVIDER_QUICKNODE, WEB3_PROVIDER_ALCHEMY, WEB3_PROVIDER_ETHERSCAN:
+			return provider
+		}
+	}
+	return WEB3_PROVIDER_ETHERSCAN // 默认使用Etherscan兼容性
+}
+
+/*
+获取Moralis API Key
+*/
+func GetMoralisApiKey() string {
+	if data := help.GetEnv("MORALIS_API_KEY"); data != "" {
+		return strings.TrimSpace(data)
+	}
+	return ""
+}
+
+/*
+获取QuickNode API Key
+*/
+func GetQuickNodeApiKey() string {
+	if data := help.GetEnv("QUICKNODE_API_KEY"); data != "" {
+		return strings.TrimSpace(data)
+	}
+	return ""
+}
+
+/*
+获取QuickNode Endpoint URL
+*/
+func GetQuickNodeEndpoint() string {
+	if data := help.GetEnv("QUICKNODE_ENDPOINT"); data != "" {
+		return strings.TrimSpace(data)
+	}
+	return ""
+}
+
+/*
+获取Alchemy API Key
+*/
+func GetAlchemyApiKey() string {
+	if data := help.GetEnv("ALCHEMY_API_KEY"); data != "" {
+		return strings.TrimSpace(data)
+	}
+	return ""
+}
+
+/*
+获取BSC监控模式
+支持: FULL (完整历史), RECENT (仅最新区块)
+默认: RECENT (性能优化)
+*/
+func GetBscMonitorMode() string {
+	if data := help.GetEnv("BSC_MONITOR_MODE"); data != "" {
+		mode := strings.ToUpper(strings.TrimSpace(data))
+		if mode == "FULL" || mode == "RECENT" {
+			return mode
+		}
+	}
+	return "RECENT" // 默认只监控最新区块
+}
+
+/*
+获取最新区块监控范围（区块数）
+默认: 100 (监控最近100个区块)
+*/
+func GetBscRecentBlockRange() int {
+	if data := help.GetEnv("BSC_RECENT_BLOCK_RANGE"); data != "" {
+		if blockRange, err := strconv.Atoi(data); err == nil && blockRange > 0 {
+			return blockRange
+		}
+	}
+	return 100 // 默认监控最近100个区块
 }
 
 /*
