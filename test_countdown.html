@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>倒计时测试</title>
+</head>
+<body>
+    <h1>倒计时测试</h1>
+    
+    <h2>测试 1: 600 秒 (10分钟)</h2>
+    <div id="test1">
+        <span id="hours1">00</span>时
+        <span id="minutes1">00</span>分
+        <span id="seconds1">00</span>秒
+    </div>
+    
+    <h2>测试 2: 1800 秒 (30分钟)</h2>
+    <div id="test2">
+        <span id="hours2">00</span>时
+        <span id="minutes2">00</span>分
+        <span id="seconds2">00</span>秒
+    </div>
+    
+    <h2>测试 3: 3665 秒 (1小时1分5秒)</h2>
+    <div id="test3">
+        <span id="hours3">00</span>时
+        <span id="minutes3">00</span>分
+        <span id="seconds3">00</span>秒
+    </div>
+
+    <script>
+        // 修复后的时间计算函数
+        function updateCountdown(totalSeconds, testId) {
+            if (totalSeconds <= 0) {
+                document.getElementById('hours' + testId).textContent = '00';
+                document.getElementById('minutes' + testId).textContent = '00';
+                document.getElementById('seconds' + testId).textContent = '00';
+                return;
+            }
+
+            let hours = Math.floor(totalSeconds / 3600);
+            let minutes = Math.floor((totalSeconds % 3600) / 60);
+            let seconds = totalSeconds % 60;
+
+            document.getElementById('hours' + testId).textContent = hours.toString().padStart(2, '0');
+            document.getElementById('minutes' + testId).textContent = minutes.toString().padStart(2, '0');
+            document.getElementById('seconds' + testId).textContent = seconds.toString().padStart(2, '0');
+        }
+
+        // 旧的错误计算函数（用于对比）
+        function oldUpdateCountdown(totalSeconds, testId) {
+            if (totalSeconds <= 0) {
+                return;
+            }
+
+            let minute = Math.floor(totalSeconds / 60);
+            let hour = Math.floor(minute / 60);
+
+            console.log(`旧算法 - 总秒数: ${totalSeconds}, 分钟: ${minute}, 小时: ${hour}`);
+        }
+
+        // 测试数据
+        let testData = [
+            { seconds: 600, id: 1 },   // 10分钟
+            { seconds: 1800, id: 2 },  // 30分钟  
+            { seconds: 3665, id: 3 }   // 1小时1分5秒
+        ];
+
+        // 初始化测试
+        testData.forEach(test => {
+            updateCountdown(test.seconds, test.id);
+            oldUpdateCountdown(test.seconds, test.id);
+        });
+
+        // 每秒更新测试1
+        let test1Seconds = 600;
+        setInterval(() => {
+            if (test1Seconds > 0) {
+                test1Seconds--;
+                updateCountdown(test1Seconds, 1);
+            }
+        }, 1000);
+
+        console.log('测试结果:');
+        console.log('600秒应该显示: 00时10分00秒');
+        console.log('1800秒应该显示: 00时30分00秒');
+        console.log('3665秒应该显示: 01时01分05秒');
+    </script>
+</body>
+</html>
