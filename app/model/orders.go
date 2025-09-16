@@ -186,6 +186,7 @@ func CalcTradeAmount(wa []WalletAddress, rate, money float64) (WalletAddress, st
 
 	// 检查钱包地址是否为空
 	if len(wa) == 0 {
+		log.Error("CalcTradeAmount: 没有可用的钱包地址")
 		return WalletAddress{}, ""
 	}
 
@@ -204,6 +205,7 @@ func CalcTradeAmount(wa []WalletAddress, rate, money float64) (WalletAddress, st
 
 	// 检查汇率是否为零或接近零，防止除零错误
 	if rate <= 0 {
+		log.Error(fmt.Sprintf("CalcTradeAmount: 汇率异常 rate=%.4f", rate))
 		return WalletAddress{}, ""
 	}
 
@@ -233,5 +235,6 @@ func CalcTradeAmount(wa []WalletAddress, rate, money float64) (WalletAddress, st
 	}
 
 	// 如果达到最大尝试次数，返回空值
+	log.Error(fmt.Sprintf("CalcTradeAmount: 达到最大尝试次数 maxAttempts=%d, 待支付订单数量=%d, 钱包地址数量=%d", maxAttempts, len(_orders), len(wa)))
 	return WalletAddress{}, ""
 }

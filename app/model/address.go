@@ -33,20 +33,85 @@ type WalletAddress struct {
 // 启动时添加初始钱包地址
 func addStartWalletAddress() {
 	var _wa WalletAddress
+	addresses := config.GetInitWalletAddress()
+	
+	if len(addresses) == 0 {
+		fmt.Println("ℹ️  未配置WALLET_ADDRESS环境变量")
+		return
+	}
 
-	for _, address := range config.GetInitWalletAddress() {
-		if help.IsValidTRONWalletAddress(address) || help.IsValidPOLWalletAddress(address) || help.IsValidOPTWalletAddress(address) || help.IsValidBSCWalletAddress(address) || help.IsValidARBWalletAddress(address) || help.IsValidXLAYERWalletAddress(address) || help.IsValidSOLWalletAddress(address) || help.IsValidAPTWalletAddress(address) {
-			_addresses := strings.Split(strings.TrimSpace(address), ":")
-			var _res2 = DB.Where("chain = ? and address = ?", _addresses[0], _addresses[1]).First(&_wa)
-			if errors.Is(_res2.Error, gorm.ErrRecordNotFound) {
-				var _row = WalletAddress{Chain: _addresses[0], Address: _addresses[1], Status: StatusEnable}
-				var _res = DB.Create(&_row)
-				if _res.Error == nil && _res.RowsAffected == 1 {
-					fmt.Println("✅钱包地址添加成功：", address)
-				}
+	fmt.Printf("🔍 开始处理 %d 个钱包地址配置...\n", len(addresses))
+
+	for i, address := range addresses {
+		address = strings.TrimSpace(address)
+		if address == "" {
+			continue
+		}
+
+		fmt.Printf("📝 处理地址 %d/%d: %s\n", i+1, len(addresses), address)
+
+		// 验证地址格式
+		isValid := help.IsValidTRONWalletAddress(address) || 
+			help.IsValidPOLWalletAddress(address) || 
+			help.IsValidOPTWalletAddress(address) || 
+			help.IsValidBSCWalletAddress(address) || 
+			help.IsValidARBWalletAddress(address) || 
+			help.IsValidXLAYERWalletAddress(address) || 
+			help.IsValidSOLWalletAddress(address) || 
+			help.IsValidAPTWalletAddress(address)
+
+		if !isValid {
+			fmt.Printf("❌ 地址格式无效: %s\n", address)
+			fmt.Println("   支持的格式:")
+			fmt.Println("   - TRON:TxxxxxxxxxxxxxxxxxxxxxxxxxxxxR")
+			fmt.Println("   - POLY:0x1234567890123456789012345678901234567890")
+			fmt.Println("   - BSC:0x1234567890123456789012345678901234567890")
+			fmt.Println("   - OP:0x1234567890123456789012345678901234567890")
+			fmt.Println("   - ARB:0x1234567890123456789012345678901234567890")
+			fmt.Println("   - XLAYER:0x1234567890123456789012345678901234567890")
+			fmt.Println("   - SOL:1234567890123456789012345678901234567890123")
+			fmt.Println("   - APT:0x1234567890123456789012345678901234567890123456789012345678901234")
+			continue
+		}
+
+		// 解析地址
+		_addresses := strings.Split(address, ":")
+		if len(_addresses) != 2 {
+			fmt.Printf("❌ 地址格式错误，缺少冒号分隔符: %s\n", address)
+			continue
+		}
+
+		chain := _addresses[0]
+		addr := _addresses[1]
+
+		// 检查是否已存在
+		var _res2 = DB.Where("chain = ? and address = ?", chain, addr).First(&_wa)
+		if !errors.Is(_res2.Error, gorm.ErrRecordNotFound) {
+			if _res2.Error == nil {
+				fmt.Printf("ℹ️  地址已存在: %s:%s\n", chain, addr)
+			} else {
+				fmt.Printf("❌ 查询地址时出错: %v\n", _res2.Error)
 			}
+			continue
+		}
+
+		// 添加新地址
+		var _row = WalletAddress{
+			Chain:   chain,
+			Address: addr,
+			Status:  StatusEnable,
+		}
+		var _res = DB.Create(&_row)
+		if _res.Error != nil {
+			fmt.Printf("❌ 添加地址失败: %s - %v\n", address, _res.Error)
+		} else if _res.RowsAffected == 1 {
+			fmt.Printf("✅ 钱包地址添加成功: %s\n", address)
+		} else {
+			fmt.Printf("⚠️  地址添加异常: %s - 影响行数: %d\n", address, _res.RowsAffected)
 		}
 	}
+
+	fmt.Println("🏁 钱包地址处理完成")
 }
 
 func (wa *WalletAddress) TableName() string {
@@ -80,6 +145,29 @@ func GetAvailableAddress(chain string) []WalletAddress {
 	var rows []WalletAddress
 	DB.Where("chain = ? and status = ?", chain, StatusEnable).Find(&rows)
 	return rows
+}
+
+/*
+获取所有链路的钱包地址统计信息
+*/
+func GetWalletAddressStats() map[string]int {
+	var results []struct {
+		Chain string
+		Count int64
+	}
+	
+	DB.Model(&WalletAddress{}).
+		Select("chain, count(*) as count").
+		Where("status = ?", StatusEnable).
+		Group("chain").
+		Find(&results)
+	
+	stats := make(map[string]int)
+	for _, result := range results {
+		stats[result.Chain] = int(result.Count)
+	}
+	
+	return stats
 }
 
 func GetOtherNotify(chain string, address string) bool {

@@ -60,6 +60,17 @@ func main() {
 	log.Info("🗄️  初始化数据库连接...")
 	model.Init()
 
+	// 显示钱包地址统计
+	addressStats := model.GetWalletAddressStats()
+	if len(addressStats) > 0 {
+		log.Info("💳 钱包地址配置统计:")
+		for chain, count := range addressStats {
+			log.Info(fmt.Sprintf("   - %s: %d个地址", chain, count))
+		}
+	} else {
+		log.Warn("⚠️  未配置任何钱包地址，请通过Telegram机器人添加收款地址")
+	}
+
 	// 启动监控服务
 	log.Info("📊 启动交易监控服务...")
 	go monitor.TradeStart()
