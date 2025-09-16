@@ -123,21 +123,27 @@ BSC_MONITOR_MODE=RECENT
 BSC_RECENT_BLOCK_RANGE=100
 ```
 
-## 向后兼容性
+## 重要变更说明
 
-如果不配置BSC_WEB3_PROVIDER，系统将默认使用ETHERSCAN模式以保持向后兼容：
+⚠️ **BSC不再支持ETHERSCAN提供商**
+
+从此版本开始，BSC链必须使用专用的Web3 API提供商。旧的ETHERSCAN配置已被弃用：
 
 ```bash
-# 默认配置（向后兼容）
-BSC_WEB3_PROVIDER=ETHERSCAN  # 或不设置此参数
+# ❌ 已弃用，不再支持
+BSC_WEB3_PROVIDER=ETHERSCAN
 ETHERSCAN_API_KEY=your_etherscan_api_key
+
+# ✅ 新的配置方式
+BSC_WEB3_PROVIDER=MORALIS
+MORALIS_API_KEY=your_moralis_api_key
 ```
 
 ## 性能优化建议
 
 1. **使用RECENT模式**：避免查询大量历史数据
 2. **合理设置区块范围**：根据交易频率调整BSC_RECENT_BLOCK_RANGE
-3. **API密钥轮询**：配置多个ETHERSCAN_API_KEY以分散请求压力
+3. **选择合适的提供商**：根据使用量选择Moralis、QuickNode或Alchemy
 4. **监控日志**：启用REQUEST_LOG_ENABLED=true来调试API调用
 
 ## 故障排除
@@ -174,15 +180,16 @@ tail -f /app/logs/usdtmore.log | grep "BSC"
 
 ### 从旧版BSC配置迁移
 
-如果您之前使用的是BSC_SCAN_API_KEY，请按照以下步骤迁移：
+如果您之前使用的是BSC_SCAN_API_KEY或ETHERSCAN配置，请按照以下步骤迁移：
 
 1. **注册新的Web3 API服务**（推荐Moralis）
 2. **更新.env配置文件**：
    ```bash
-   # 旧配置（可以保留作为备用）
+   # ❌ 旧配置（已弃用，需要删除）
    # BSC_SCAN_API_KEY=your_old_bsc_scan_key
+   # BSC_WEB3_PROVIDER=ETHERSCAN
    
-   # 新配置
+   # ✅ 新配置
    BSC_WEB3_PROVIDER=MORALIS
    MORALIS_API_KEY=your_new_moralis_key
    BSC_MONITOR_MODE=RECENT

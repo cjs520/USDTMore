@@ -28,19 +28,22 @@ func NewHTTPClient() *HTTPClient {
 		MaxConnsPerHost:     50,               // 每个主机的最大连接数
 		IdleConnTimeout:     90 * time.Second, // 空闲连接超时时间
 
-		// 连接超时配置
+		// 连接超时配置 - 增加超时时间以应对慢速API
 		DialContext: (&net.Dialer{
-			Timeout:   10 * time.Second, // 连接超时
+			Timeout:   30 * time.Second, // 连接超时增加到30秒
 			KeepAlive: 30 * time.Second, // Keep-Alive时间
 		}).DialContext,
 
-		// TLS和HTTP配置
-		TLSHandshakeTimeout:   10 * time.Second,
-		ResponseHeaderTimeout: httpTimeout / 2, // 响应头超时时间为总超时时间的一半
+		// TLS和HTTP配置 - 增加超时时间
+		TLSHandshakeTimeout:   20 * time.Second, // TLS握手超时增加到20秒
+		ResponseHeaderTimeout: 90 * time.Second, // 响应头超时时间增加到90秒
 		ExpectContinueTimeout: 1 * time.Second,
 
-		// 启用HTTP/2
+		// 启用HTTP/2但允许降级到HTTP/1.1
 		ForceAttemptHTTP2: true,
+
+		// 禁用压缩以避免某些API的兼容性问题
+		DisableCompression: false,
 	}
 
 	client := &http.Client{

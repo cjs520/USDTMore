@@ -3,6 +3,7 @@ package telegram
 import (
 	"USDTMore/app/config"
 	"USDTMore/app/help"
+	httpClient "USDTMore/app/http"
 	"USDTMore/app/log"
 	"USDTMore/app/model"
 	"encoding/json"
@@ -461,56 +462,111 @@ func getTronTRC20Balance(address, contract string) float64 {
 */
 func requestAddress(baseUrl string, query string) []byte {
 	var url = baseUrl + "?" + query
-	var client = http.Client{Timeout: time.Second * 5}
-	resp, err := client.Get(url)
+
+	// 设置请求头，模拟浏览器请求以提高成功率
+	headers := map[string]string{
+		"User-Agent":                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36 Edg/140.0.0.0",
+		"Accept":                    "application/json,text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+		"Accept-Language":           "zh-CN,zh;q=0.9,en;q=0.8",
+		"Accept-Encoding":           "gzip, deflate, br",
+		"Cache-Control":             "no-cache",
+		"Connection":                "keep-alive",
+		"DNT":                       "1",
+		"Sec-Fetch-Dest":            "document",
+		"Sec-Fetch-Mode":            "navigate",
+		"Sec-Fetch-Site":            "none",
+		"Sec-Fetch-User":            "?1",
+		"Upgrade-Insecure-Requests": "1",
+	}
+
+	// 使用带重试机制的HTTP客户端
+	client := httpClient.NewHTTPClient()
+	maxRetries := config.GetMaxRetries()
+
+	// 记录请求详情（隐藏API Key）
+	maskedURL := url
+	if strings.Contains(url, "apikey=") {
+		parts := strings.Split(url, "apikey=")
+		if len(parts) > 1 {
+			apiKeyPart := strings.Split(parts[1], "&")[0]
+			maskedURL = strings.Replace(url, apiKeyPart, "***", 1)
+		}
+	}
+	log.Info(fmt.Sprintf("请求ETH兼容链API: %s", maskedURL))
+
+	resp, err := client.Get(url, headers, maxRetries)
 	if err != nil {
 		log.Error("GetWalletInfoByAddress client.Get(url)", err)
 		return nil
 	}
 
-	defer resp.Body.Close()
-	if resp.StatusCode != 200 {
-		log.Error("GetWalletInfoByAddress resp.StatusCode != 200", resp.StatusCode, err)
-		return nil
-	}
-
-	all, err := io.ReadAll(resp.Body)
+	// 使用统一的响应体读取方法
+	all, err := httpClient.GetResponseBody(resp)
 	if err != nil {
 		log.Error("GetWalletInfoByAddress io.ReadAll(resp.Body)", err)
 		return nil
 	}
-	//result := gjson.ParseBytes(all)
 
 	return all
 }
 
 func getWalletInfoETH(name string, unit string, chain string, host string, apiKey string, contractAddress string, address string) string {
-	// 获取链ID用于Etherscan V2 API
-	var chainId string
-	switch chain {
-	case "POLY":
-		chainId = "137" // Polygon
-	case "OP":
-		chainId = "10" // Optimism
-	case "BSC":
-		chainId = "56" // BSC
-	case "ARB":
-		chainId = "42161" // Arbitrum One
-	case "XLAYER":
-		chainId = "196" // X-Layer
-	default:
-		chainId = "1" // Ethereum mainnet
+	// 获取API端点配置
+	apiConfig := config.GetEVMChainAPIEndpoints(chain)
+	if apiConfig == nil {
+		log.Error(fmt.Sprintf("不支持的链类型: %s", chain))
+		return ""
 	}
 
-	// 这里计算的是ETH余额 - 使用正确的Etherscan V2 API格式
-	var queryETH = "chainid=" + chainId + "&module=account&action=balance&address=" + address + "&tag=latest&apikey=" + apiKey
-	allETH := requestAddress(host, queryETH)
-	resultETH := gjson.ParseBytes(allETH)
-
-	// 检查API响应状态
-	if resultETH.Get("status").String() != "1" {
-		log.Error("Etherscan API错误 (ETH余额):", resultETH.Get("message").String())
+	// 尝试所有可用的API端点
+	endpoints := apiConfig.GetAllEndpoints()
+	if len(endpoints) == 0 {
+		log.Error(fmt.Sprintf("没有可用的API端点: %s", chain))
 		return ""
+	}
+
+	var resultETH gjson.Result
+	var ethQuerySuccess bool
+
+	// 尝试查询ETH余额
+	for i, endpoint := range endpoints {
+		log.Info(fmt.Sprintf("尝试使用 %s 查询 %s 链余额 (尝试 %d/%d)",
+			apiConfig.GetDisplayName(endpoint), chain, i+1, len(endpoints)))
+
+		// 构建查询URL
+		extraParams := map[string]string{
+			"tag": "latest",
+		}
+		queryURL := apiConfig.BuildQueryURL(endpoint, "account", "balance", address, apiKey, extraParams)
+
+		// 从完整URL中提取query部分
+		parts := strings.Split(queryURL, "?")
+		if len(parts) != 2 {
+			continue
+		}
+
+		allETH := requestAddress(endpoint, parts[1])
+		if allETH == nil {
+			log.Warn(fmt.Sprintf("API端点 %s 请求失败，尝试下一个", apiConfig.GetDisplayName(endpoint)))
+			continue
+		}
+
+		resultETH = gjson.ParseBytes(allETH)
+
+		// 检查API响应状态
+		if resultETH.Get("status").String() == "1" {
+			ethQuerySuccess = true
+			log.Info(fmt.Sprintf("成功使用 %s 查询到余额", apiConfig.GetDisplayName(endpoint)))
+			break
+		} else {
+			log.Warn(fmt.Sprintf("API端点 %s 返回错误: %s",
+				apiConfig.GetDisplayName(endpoint), resultETH.Get("message").String()))
+		}
+	}
+
+	if !ethQuerySuccess {
+		log.Error(fmt.Sprintf("所有API端点都失败了，无法查询 %s 链余额", chain))
+		return fmt.Sprintf("❌ 查询失败：所有API端点都不可用\n链路：%s\n地址：%s", name, address)
 	}
 
 	// 将余额从 Wei 转换为 ETH
@@ -527,9 +583,38 @@ func getWalletInfoETH(name string, unit string, chain string, host string, apiKe
 	var balanceUSDT = big.NewFloat(0)
 
 	// 尝试通过最近的代币交易来获取余额信息（这是一个临时解决方案）
-	var queryUSDT = "chainid=" + chainId + "&module=account&action=tokentx&contractaddress=" + contractAddress + "&address=" + address + "&page=1&offset=1&startblock=0&endblock=99999999&sort=desc&apikey=" + apiKey
-	allUSDT := requestAddress(host, queryUSDT)
-	resultUSDT := gjson.ParseBytes(allUSDT)
+	extraParamsUSDT := map[string]string{
+		"contractaddress": contractAddress,
+		"page":            "1",
+		"offset":          "1",
+		"startblock":      "0",
+		"endblock":        "99999999",
+		"sort":            "desc",
+	}
+
+	// 使用成功的API端点查询USDT交易
+	var successfulEndpoint string
+	for _, endpoint := range endpoints {
+		if apiConfig.GetDisplayName(endpoint) == apiConfig.GetDisplayName(endpoints[0]) && ethQuerySuccess {
+			successfulEndpoint = endpoint
+			break
+		}
+	}
+	if successfulEndpoint == "" && len(endpoints) > 0 {
+		successfulEndpoint = endpoints[0]
+	}
+
+	queryUSDTURL := apiConfig.BuildQueryURL(successfulEndpoint, "account", "tokentx", address, apiKey, extraParamsUSDT)
+	parts := strings.Split(queryUSDTURL, "?")
+	var allUSDT []byte
+	var resultUSDT gjson.Result
+
+	if len(parts) == 2 {
+		allUSDT = requestAddress(successfulEndpoint, parts[1])
+		if allUSDT != nil {
+			resultUSDT = gjson.ParseBytes(allUSDT)
+		}
+	}
 
 	// 检查API响应状态
 	if resultUSDT.Get("status").String() != "1" {
@@ -564,10 +649,27 @@ func getWalletInfoETH(name string, unit string, chain string, host string, apiKe
 	var wa model.WalletAddress
 	var text = ""
 	if model.DB.Where("chain = ? and address = ?", chain, address).First(&wa).Error == nil {
-		// 这里查询订单历史 - 使用正确的Etherscan V2 API格式
-		var queryTx = "chainid=" + chainId + "&module=account&action=tokentx&contractaddress=" + contractAddress + "&address=" + address + "&page=1&offset=100&startblock=" + strconv.FormatInt(wa.StartBlock+1, 10) + "&endblock=" + strconv.FormatInt(wa.StartBlock+999999999999, 10) + "&sort=asc&apikey=" + apiKey
-		allTx := requestAddress(host, queryTx)
-		resultTx := gjson.ParseBytes(allTx)
+		// 这里查询订单历史 - 使用API端点配置
+		extraParamsTx := map[string]string{
+			"contractaddress": contractAddress,
+			"page":            "1",
+			"offset":          "100",
+			"startblock":      strconv.FormatInt(wa.StartBlock+1, 10),
+			"endblock":        strconv.FormatInt(wa.StartBlock+999999999999, 10),
+			"sort":            "asc",
+		}
+
+		queryTxURL := apiConfig.BuildQueryURL(successfulEndpoint, "account", "tokentx", address, apiKey, extraParamsTx)
+		parts := strings.Split(queryTxURL, "?")
+		var allTx []byte
+		var resultTx gjson.Result
+
+		if len(parts) == 2 {
+			allTx = requestAddress(successfulEndpoint, parts[1])
+			if allTx != nil {
+				resultTx = gjson.ParseBytes(allTx)
+			}
+		}
 
 		// 检查API响应状态
 		if resultTx.Get("status").String() != "1" {

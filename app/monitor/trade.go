@@ -92,7 +92,7 @@ func TradeStart() {
 			// 获取有待支付订单的POLY地址
 			addressesWithOrders := getAddressesWithPendingOrders(_lock, "POLY")
 			log.Info(fmt.Sprintf("[POLY] 需要监控的地址数量: %d", len(addressesWithOrders)))
-			
+
 			for _, address := range addressesWithOrders {
 				var result gjson.Result
 				var err error
@@ -113,7 +113,7 @@ func TradeStart() {
 			// 获取有待支付订单的OP地址
 			addressesWithOrders := getAddressesWithPendingOrders(_lock, "OP")
 			log.Info(fmt.Sprintf("[OP] 需要监控的地址数量: %d", len(addressesWithOrders)))
-			
+
 			for _, address := range addressesWithOrders {
 				var result gjson.Result
 				var err error
@@ -134,7 +134,7 @@ func TradeStart() {
 			// 获取有待支付订单的BSC地址
 			addressesWithOrders := getAddressesWithPendingOrders(_lock, "BSC")
 			log.Info(fmt.Sprintf("[BSC] 需要监控的地址数量: %d", len(addressesWithOrders)))
-			
+
 			for _, address := range addressesWithOrders {
 				var result gjson.Result
 				var err error
@@ -155,7 +155,7 @@ func TradeStart() {
 			// 获取有待支付订单的ARB地址
 			addressesWithOrders := getAddressesWithPendingOrders(_lock, "ARB")
 			log.Info(fmt.Sprintf("[ARB] 需要监控的地址数量: %d", len(addressesWithOrders)))
-			
+
 			for _, address := range addressesWithOrders {
 				var result gjson.Result
 				var err error
@@ -176,7 +176,7 @@ func TradeStart() {
 			// 获取有待支付订单的XLAYER地址
 			addressesWithOrders := getAddressesWithPendingOrders(_lock, "XLAYER")
 			log.Info(fmt.Sprintf("[XLAYER] 需要监控的地址数量: %d", len(addressesWithOrders)))
-			
+
 			for _, address := range addressesWithOrders {
 				var result gjson.Result
 				var err error
@@ -261,20 +261,20 @@ func getAllPendingOrders() (map[string]model.TradeOrders, error) {
 */
 func getAddressesWithPendingOrders(orders map[string]model.TradeOrders, chain string) []string {
 	addressSet := make(map[string]bool)
-	
+
 	// 从待支付订单中提取该链的地址
 	for _, order := range orders {
 		if order.Chain == chain {
 			addressSet[order.Address] = true
 		}
 	}
-	
+
 	// 转换为切片
 	addresses := make([]string, 0, len(addressSet))
 	for address := range addressSet {
 		addresses = append(addresses, address)
 	}
-	
+
 	return addresses
 }
 
@@ -408,8 +408,9 @@ func handlePaymentTransactionForETH(_lock map[string]model.TradeOrders, _toChain
 			isValidUSDT = strings.EqualFold(contractAddress, config.GetOptimismExplorerContractAddress()) ||
 				strings.Contains(strings.ToUpper(tokenSymbol), "USDT")
 		case "BSC":
-			isValidUSDT = strings.EqualFold(contractAddress, config.GetBscExplorerContractAddress()) ||
-				strings.Contains(strings.ToUpper(tokenSymbol), "USDT") || tokenSymbol == "BSC-USD"
+			// BSC不再使用通用ETH处理函数
+			log.Warn("[BSC] 不应该使用通用ETH处理函数，请使用专用的BSC Web3 API")
+			continue
 		case "ARB":
 			isValidUSDT = strings.EqualFold(contractAddress, config.GetArbitrumContractAddress()) ||
 				strings.Contains(strings.ToUpper(tokenSymbol), "USDT")
@@ -502,18 +503,14 @@ func handlePaymentTransactionForOptimismExplorer(_lock map[string]model.TradeOrd
 }
 func handlePaymentTransactionForBscScan(_lock map[string]model.TradeOrders, _toAddress string, result gjson.Result) {
 	provider := config.GetBscWeb3Provider()
-	
+
 	switch provider {
 	case config.WEB3_PROVIDER_MORALIS:
 		handlePaymentTransactionForBscMoralis(_lock, _toAddress, result)
 	case config.WEB3_PROVIDER_QUICKNODE, config.WEB3_PROVIDER_ALCHEMY:
 		handlePaymentTransactionForBscJsonRpc(_lock, _toAddress, result)
-	case config.WEB3_PROVIDER_ETHERSCAN:
-		// 使用原有的ETH兼容处理
-		handlePaymentTransactionForETH(_lock, "BSC", _toAddress, result)
 	default:
-		// 默认使用ETH兼容处理
-		handlePaymentTransactionForETH(_lock, "BSC", _toAddress, result)
+		log.Error(fmt.Sprintf("[BSC] 不支持的Web3提供商: %s，请设置 BSC_WEB3_PROVIDER 为 MORALIS、QUICKNODE 或 ALCHEMY", provider))
 	}
 }
 
@@ -651,8 +648,9 @@ func handleOtherNotifyForETH(_toChain string, _toAddress string, result gjson.Re
 			isValidUSDT = strings.EqualFold(contractAddress, config.GetOptimismExplorerContractAddress()) ||
 				strings.Contains(strings.ToUpper(tokenSymbol), "USDT")
 		case "BSC":
-			isValidUSDT = strings.EqualFold(contractAddress, config.GetBscExplorerContractAddress()) ||
-				strings.Contains(strings.ToUpper(tokenSymbol), "USDT") || tokenSymbol == "BSC-USD"
+			// BSC不再使用通用ETH处理函数
+			log.Warn("[BSC] 不应该使用通用ETH处理函数，请使用专用的BSC Web3 API")
+			continue
 		case "ARB":
 			isValidUSDT = strings.EqualFold(contractAddress, config.GetArbitrumContractAddress()) ||
 				strings.Contains(strings.ToUpper(tokenSymbol), "USDT")
@@ -740,7 +738,17 @@ func handleOtherNotifyForOptimismExplorer(_toAddress string, result gjson.Result
 	handleOtherNotifyForETH("OP", _toAddress, result)
 }
 func handleOtherNotifyForBscScan(_toAddress string, result gjson.Result) {
-	handleOtherNotifyForETH("BSC", _toAddress, result)
+	// BSC通知处理根据Web3提供商类型进行
+	provider := config.GetBscWeb3Provider()
+
+	switch provider {
+	case config.WEB3_PROVIDER_MORALIS:
+		handleOtherNotifyForBscMoralis(_toAddress, result)
+	case config.WEB3_PROVIDER_QUICKNODE, config.WEB3_PROVIDER_ALCHEMY:
+		handleOtherNotifyForBscJsonRpc(_toAddress, result)
+	default:
+		log.Warn(fmt.Sprintf("[BSC] 不支持的Web3提供商用于通知: %s", provider))
+	}
 }
 
 // Arbitrum One交易处理函数
@@ -923,42 +931,47 @@ func getUsdtTransByETH(chain string, address string) (gjson.Result, error) {
 	var apiKey string
 	var contractAddress string
 
-	// 预先获取API Key并验证
-	apiKey = config.GetEtherscanApiKey()
-	if apiKey == "" {
-		return gjson.Result{}, fmt.Errorf("[%s] ETHERSCAN_API_KEY未配置", chain)
-	}
-	
-	// 简单验证API Key格式（应该是32位字符串）
-	if len(apiKey) < 20 {
-		log.Warn(fmt.Sprintf("[%s] API Key长度异常: %d位，可能无效", chain, len(apiKey)))
-	}
-
 	// 根据链类型设置API端点、chainid和相关配置
 	switch chain {
 	case "POLY":
 		host = "https://api.etherscan.io/v2/api" // Polygon使用Etherscan V2 API
 		chainId = "137"                          // Polygon chainid
 		contractAddress = config.GetPolygonScanContractAddress()
+		apiKey = config.GetEtherscanApiKey()
 	case "OP":
 		host = "https://api.etherscan.io/v2/api" // Optimism使用Etherscan V2 API
 		chainId = "10"                           // Optimism chainid
 		contractAddress = config.GetOptimismExplorerContractAddress()
+		apiKey = config.GetEtherscanApiKey()
 	case "BSC":
-		// BSC需要使用BscScan专用API，但暂时使用Etherscan V1格式尝试
-		host = "https://api.bscscan.com/api" // 使用BscScan官方API
-		chainId = ""                         // BscScan API不需要chainid参数
-		contractAddress = config.GetBscExplorerContractAddress()
+		// BSC不再使用通用ETH函数，应该直接调用专用函数
+		return gjson.Result{}, fmt.Errorf("BSC链不支持通用ETH查询，请使用专用的BSC Web3 API")
 	case "ARB":
 		host = "https://api.etherscan.io/v2/api" // Arbitrum使用Etherscan V2 API
 		chainId = "42161"                        // Arbitrum One chainid
 		contractAddress = config.GetArbitrumContractAddress()
+		apiKey = config.GetEtherscanApiKey()
 	case "XLAYER":
 		host = "https://api.etherscan.io/v2/api" // X-Layer使用Etherscan V2 API
 		chainId = "196"                          // X-Layer chainid
 		contractAddress = config.GetXLayerContractAddress()
+		apiKey = config.GetEtherscanApiKey()
 	default:
 		return gjson.Result{}, fmt.Errorf("不支持的链类型: %s", chain)
+	}
+
+	// 验证API Key配置
+	if apiKey == "" {
+		if chain == "BSC" {
+			return gjson.Result{}, fmt.Errorf("[%s] BSC_SCAN_API_KEY或ETHERSCAN_API_KEY未配置", chain)
+		} else {
+			return gjson.Result{}, fmt.Errorf("[%s] ETHERSCAN_API_KEY未配置", chain)
+		}
+	}
+
+	// 简单验证API Key格式（应该是20位以上字符串）
+	if len(apiKey) < 20 {
+		log.Warn(fmt.Sprintf("[%s] API Key长度异常: %d位，可能无效", chain, len(apiKey)))
 	}
 
 	if model.DB.Where("chain = ? and address = ?", chain, address).First(&wa).Error == nil {
@@ -991,7 +1004,7 @@ func getUsdtTransByETH(chain string, address string) (gjson.Result, error) {
 
 		if allTx != nil {
 			resultTx = gjson.ParseBytes(allTx)
-			
+
 			// 记录原始响应（用于调试）
 			if config.IsRequestLogEnabled() {
 				log.Info(fmt.Sprintf("[%s] tokentx API响应: %s", chain, string(allTx)))
@@ -1000,7 +1013,7 @@ func getUsdtTransByETH(chain string, address string) (gjson.Result, error) {
 			// 检查API响应状态
 			status := resultTx.Get("status").String()
 			message := resultTx.Get("message").String()
-			
+
 			if status == "1" {
 				querySuccess = true
 				log.Debug(fmt.Sprintf("[%s] tokentx查询成功", chain))
@@ -1013,24 +1026,24 @@ func getUsdtTransByETH(chain string, address string) (gjson.Result, error) {
 		// 如果tokentx查询失败，尝试txlistinternal作为备用
 		if !querySuccess {
 			log.Info(fmt.Sprintf("[%s] tokentx查询失败，尝试txlistinternal备用查询", chain))
-			
+
 			var backupQuery string
 			if endBlock == "latest" {
 				backupQuery = "chainid=" + chainId + "&module=account&action=txlistinternal&address=" + address + "&page=1&offset=100&startblock=" + strconv.FormatInt(wa.StartBlock+1, 10) + "&endblock=latest&sort=asc&apikey=" + apiKey
 			} else {
 				backupQuery = "chainid=" + chainId + "&module=account&action=txlistinternal&address=" + address + "&page=1&offset=100&startblock=" + strconv.FormatInt(wa.StartBlock+1, 10) + "&endblock=" + endBlock + "&sort=asc&apikey=" + apiKey
 			}
-			
+
 			maskedBackupQuery := strings.Replace(backupQuery, apiKey, "***", 1)
 			log.Info(fmt.Sprintf("[%s] 备用API请求: %s?%s", chain, host, maskedBackupQuery))
-			
+
 			backupTx := requestAddress(host, backupQuery)
 			if backupTx != nil {
 				backupResult := gjson.ParseBytes(backupTx)
 				if config.IsRequestLogEnabled() {
 					log.Info(fmt.Sprintf("[%s] txlistinternal API响应: %s", chain, string(backupTx)))
 				}
-				
+
 				backupStatus := backupResult.Get("status").String()
 				if backupStatus == "1" {
 					resultTx = backupResult
@@ -1073,9 +1086,9 @@ func getUsdtTransByETH(chain string, address string) (gjson.Result, error) {
 				}
 			}
 
-			log.Error(fmt.Sprintf("[%s] Etherscan API错误 - 地址: %s, 状态: %s, 消息: %s, 详情: %s", 
+			log.Error(fmt.Sprintf("[%s] Etherscan API错误 - 地址: %s, 状态: %s, 消息: %s, 详情: %s",
 				chain, address, status, message, errorDetail))
-			
+
 			return gjson.Result{}, fmt.Errorf("Etherscan API错误: %s", errorDetail)
 		}
 
@@ -1115,7 +1128,7 @@ func getUsdtOptimismTransByOptimismExplorer(_toAddress string) (gjson.Result, er
 func getUsdtBscTransByBscScan(_toAddress string) (gjson.Result, error) {
 	// 根据配置的Web3提供商选择不同的API
 	provider := config.GetBscWeb3Provider()
-	
+
 	switch provider {
 	case config.WEB3_PROVIDER_MORALIS:
 		return getUsdtBscTransByMoralis(_toAddress)
@@ -1123,12 +1136,8 @@ func getUsdtBscTransByBscScan(_toAddress string) (gjson.Result, error) {
 		return getUsdtBscTransByQuickNode(_toAddress)
 	case config.WEB3_PROVIDER_ALCHEMY:
 		return getUsdtBscTransByAlchemy(_toAddress)
-	case config.WEB3_PROVIDER_ETHERSCAN:
-		// 保持向后兼容，使用原有的Etherscan方式
-		return getUsdtTransByETH("BSC", _toAddress)
 	default:
-		log.Warn(fmt.Sprintf("[BSC] 未知的Web3提供商: %s，使用默认Etherscan", provider))
-		return getUsdtTransByETH("BSC", _toAddress)
+		return gjson.Result{}, fmt.Errorf("[BSC] 不支持的Web3提供商: %s，请设置 BSC_WEB3_PROVIDER 为 MORALIS、QUICKNODE 或 ALCHEMY", provider)
 	}
 }
 func getUsdtArbitrumTransByArbitrumScan(_toAddress string) (gjson.Result, error) {
@@ -1476,13 +1485,13 @@ func getUsdtBscTransByMoralis(_toAddress string) (gjson.Result, error) {
 
 	// 构造Moralis API请求URL
 	requestURL := fmt.Sprintf("https://deep-index.moralis.io/api/v2/%s/erc20", _toAddress)
-	
+
 	// 设置查询参数
 	params := url.Values{}
 	params.Add("chain", "bsc")
 	params.Add("token_addresses", config.GetBscExplorerContractAddress())
 	params.Add("limit", "50")
-	
+
 	// 如果配置为仅监控最新区块，设置起始区块
 	if config.GetBscMonitorMode() == "RECENT" {
 		// 获取当前区块高度并计算起始区块
@@ -1494,9 +1503,9 @@ func getUsdtBscTransByMoralis(_toAddress string) (gjson.Result, error) {
 			}
 		}
 	}
-	
+
 	finalURL := requestURL + "?" + params.Encode()
-	
+
 	// 设置请求头
 	headers := map[string]string{
 		"Content-Type": "application/json",
@@ -1542,7 +1551,7 @@ func getUsdtBscTransByQuickNode(_toAddress string) (gjson.Result, error) {
 	if endpoint == "" {
 		return gjson.Result{}, fmt.Errorf("[BSC-QuickNode] QUICKNODE_ENDPOINT未配置")
 	}
-	
+
 	apiKey := config.GetQuickNodeApiKey()
 	if apiKey == "" {
 		return gjson.Result{}, fmt.Errorf("[BSC-QuickNode] QUICKNODE_API_KEY未配置")
@@ -1550,7 +1559,7 @@ func getUsdtBscTransByQuickNode(_toAddress string) (gjson.Result, error) {
 
 	// 构造QuickNode JSON-RPC请求
 	var startBlock string = "earliest"
-	
+
 	// 如果配置为仅监控最新区块，设置起始区块
 	if config.GetBscMonitorMode() == "RECENT" {
 		currentBlock, err := getBscCurrentBlockNumber()
@@ -1561,7 +1570,7 @@ func getUsdtBscTransByQuickNode(_toAddress string) (gjson.Result, error) {
 			}
 		}
 	}
-	
+
 	// 构造eth_getLogs请求参数
 	requestBody := fmt.Sprintf(`{
 		"jsonrpc": "2.0",
@@ -1623,10 +1632,10 @@ func getUsdtBscTransByAlchemy(_toAddress string) (gjson.Result, error) {
 
 	// 构造Alchemy API请求URL
 	requestURL := fmt.Sprintf("https://bnb-mainnet.g.alchemy.com/v2/%s", apiKey)
-	
+
 	// 构造eth_getLogs请求参数
 	var startBlock string = "earliest"
-	
+
 	// 如果配置为仅监控最新区块，设置起始区块
 	if config.GetBscMonitorMode() == "RECENT" {
 		currentBlock, err := getBscCurrentBlockNumber()
@@ -1637,7 +1646,7 @@ func getUsdtBscTransByAlchemy(_toAddress string) (gjson.Result, error) {
 			}
 		}
 	}
-	
+
 	requestBody := fmt.Sprintf(`{
 		"jsonrpc": "2.0",
 		"method": "eth_getLogs",
@@ -1692,35 +1701,35 @@ func getUsdtBscTransByAlchemy(_toAddress string) (gjson.Result, error) {
 func getBscCurrentBlockNumber() (int64, error) {
 	// 使用公共RPC端点获取当前区块高度
 	requestBody := `{"jsonrpc":"2.0","method":"eth_blockNumber","params":[],"id":1}`
-	
+
 	headers := map[string]string{
 		"Content-Type": "application/json",
 		"User-Agent":   "USDTMore/1.0",
 	}
-	
+
 	// 尝试多个公共RPC端点
 	endpoints := []string{
 		"https://bsc-dataseed1.binance.org/",
 		"https://bsc-dataseed2.binance.org/",
 		"https://bsc-dataseed.binance.org/",
 	}
-	
+
 	for _, endpoint := range endpoints {
 		resp, err := httpClient.DefaultClient.Post(endpoint, strings.NewReader(requestBody), headers, 1)
 		if err != nil {
 			continue
 		}
-		
+
 		body, err := httpClient.GetResponseBody(resp)
 		if err != nil {
 			continue
 		}
-		
+
 		result := gjson.ParseBytes(body)
 		if result.Get("error").Exists() {
 			continue
 		}
-		
+
 		blockHex := result.Get("result").String()
 		if blockHex != "" {
 			blockNum, err := strconv.ParseInt(strings.TrimPrefix(blockHex, "0x"), 16, 64)
@@ -1729,7 +1738,7 @@ func getBscCurrentBlockNumber() (int64, error) {
 			}
 		}
 	}
-	
+
 	return 0, fmt.Errorf("无法获取BSC当前区块高度")
 }
 
@@ -1746,19 +1755,19 @@ func handlePaymentTransactionForBscMoralis(_lock map[string]model.TradeOrders, _
 		if valueStr == "" {
 			continue
 		}
-		
+
 		// 转换wei到USDT (18位小数)
 		value := new(big.Int)
 		value.SetString(valueStr, 10)
-		
+
 		// USDT有18位小数，所以除以10^18
 		divisor := new(big.Int)
 		divisor.Exp(big.NewInt(10), big.NewInt(18), nil)
-		
+
 		amount := new(big.Float).SetInt(value)
 		divisorFloat := new(big.Float).SetInt(divisor)
 		result := new(big.Float).Quo(amount, divisorFloat)
-		
+
 		amountFloat, _ := result.Float64()
 		_rawAmount := decimal.NewFromFloat(amountFloat)
 
@@ -1775,7 +1784,6 @@ func handlePaymentTransactionForBscMoralis(_lock map[string]model.TradeOrders, _
 		}
 
 		_txid := transfer.Get("transaction_hash").String()
-		_detailUrl := "https://bscscan.com/tx/" + _txid
 		_amount := _rawAmount.StringFixed(2)
 
 		// 检查是否已处理过此交易
@@ -1783,22 +1791,43 @@ func handlePaymentTransactionForBscMoralis(_lock map[string]model.TradeOrders, _
 			continue
 		}
 
-		// 查找匹配的订单
-		var _key = _toAddress + "_" + _amount
-		if _row, exists := _lock[_key]; exists {
-			log.Info(fmt.Sprintf("[BSC-Moralis] 找到匹配订单: %s, 金额: %s USDT", _row.TradeId, _amount))
-			
-			go func(row model.TradeOrders, txid, detailUrl string, created time.Time) {
-				// 更新订单状态
-				model.DB.Model(&model.TradeOrders{}).Where("trade_id = ?", row.TradeId).Updates(map[string]interface{}{
-					"status":      2,
-					"finish_time": created,
-					"txid":        txid,
-				})
+		// 查找匹配的订单 - 使用标准格式：链名+地址+金额
+		orderKey := "BSC" + _toAddress + _amount
+		_row, exists := _lock[orderKey]
+		if !exists {
+			log.Info(fmt.Sprintf("[BSC-Moralis] 未找到匹配订单: key=%s, amount=%s, txid=%s", orderKey, _amount, _txid))
+			continue
+		}
 
-				// 发送成功通知
-				notify.OrderNotify(row)
-			}(_row, _txid, _detailUrl, _created)
+		// 判断交易时间是否有效
+		if _created.Unix() < _row.CreatedAt.Unix() || _created.Unix() > _row.ExpiredAt.Unix() {
+			log.Info(fmt.Sprintf("[BSC-Moralis] 交易时间无效: txid=%s, 交易时间=%s, 订单创建时间=%s, 订单过期时间=%s",
+				_txid, _created.Format(time.DateTime), _row.CreatedAt.Format(time.DateTime), _row.ExpiredAt.Format(time.DateTime)))
+			continue
+		}
+
+		var _fromAddress = transfer.Get("from_address").String()
+
+		log.Info(fmt.Sprintf("[BSC-Moralis] 处理订单支付: order_id=%s, txid=%s, from=%s, amount=%s",
+			_row.TradeId, _txid, _fromAddress, _amount))
+
+		if err := _row.OrderSetSucc(_fromAddress, _txid, _created); err != nil {
+			log.Error(fmt.Sprintf("[BSC-Moralis] 订单设置成功状态失败: order_id=%s, txid=%s, error=%v",
+				_row.TradeId, _txid, err))
+		} else {
+			log.Info(fmt.Sprintf("[BSC-Moralis] 订单支付成功，发送回调: order_id=%s, txid=%s",
+				_row.TradeId, _txid))
+
+			// 重新查询订单以获取最新状态
+			var updatedOrder model.TradeOrders
+			if err := model.DB.Where("id = ?", _row.Id).First(&updatedOrder).Error; err != nil {
+				log.Error(fmt.Sprintf("[BSC-Moralis] 重新查询订单失败: order_id=%s, error=%v", _row.TradeId, err))
+			} else {
+				// 通知订单支付成功
+				go notify.OrderNotify(updatedOrder)
+				// TG发送订单信息
+				go telegram.SendTradeSuccMsg(updatedOrder)
+			}
 		}
 	}
 }
@@ -1820,7 +1849,7 @@ func handlePaymentTransactionForBscJsonRpc(_lock map[string]model.TradeOrders, _
 		// 解析接收地址 (topic[2])
 		toAddressHex := topics[2].String()
 		toAddress := "0x" + toAddressHex[26:] // 去掉前面的0填充
-		
+
 		if !strings.EqualFold(toAddress, _toAddress) {
 			continue
 		}
@@ -1834,15 +1863,15 @@ func handlePaymentTransactionForBscJsonRpc(_lock map[string]model.TradeOrders, _
 		// 转换十六进制数据到big.Int
 		value := new(big.Int)
 		value.SetString(strings.TrimPrefix(dataHex, "0x"), 16)
-		
+
 		// USDT有18位小数，所以除以10^18
 		divisor := new(big.Int)
 		divisor.Exp(big.NewInt(10), big.NewInt(18), nil)
-		
+
 		amount := new(big.Float).SetInt(value)
 		divisorFloat := new(big.Float).SetInt(divisor)
 		resultFloat := new(big.Float).Quo(amount, divisorFloat)
-		
+
 		amountFloat, _ := resultFloat.Float64()
 		_rawAmount := decimal.NewFromFloat(amountFloat)
 
@@ -1870,11 +1899,11 @@ func handlePaymentTransactionForBscJsonRpc(_lock map[string]model.TradeOrders, _
 			continue
 		}
 
-		// 查找匹配的订单
-		var _key = _toAddress + "_" + _amount
-		if _row, exists := _lock[_key]; exists {
+		// 查找匹配的订单 - 使用标准格式：链名+地址+金额
+		orderKey := "BSC" + _toAddress + _amount
+		if _row, exists := _lock[orderKey]; exists {
 			log.Info(fmt.Sprintf("[BSC-JsonRPC] 找到匹配订单: %s, 金额: %s USDT, 区块: %d", _row.TradeId, _amount, blockNumber))
-			
+
 			go func(row model.TradeOrders, txid, detailUrl string, created time.Time) {
 				// 更新订单状态
 				model.DB.Model(&model.TradeOrders{}).Where("trade_id = ?", row.TradeId).Updates(map[string]interface{}{

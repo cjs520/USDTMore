@@ -56,6 +56,19 @@ func main() {
 		}
 	}
 
+	// 验证BSC Web3配置
+	if err := config.ValidateBscWeb3Config(); err != nil {
+		log.Error("❌ BSC配置错误:", err.Error())
+		log.Info("💡 BSC配置建议:")
+		suggestions := config.GetBscConfigSuggestions()
+		for _, suggestion := range suggestions {
+			log.Info("   " + suggestion)
+		}
+		log.Warn("⚠️  BSC链交易监控将无法正常工作")
+	} else {
+		log.Info("✅ BSC Web3 API配置验证通过")
+	}
+
 	// 初始化数据库
 	log.Info("🗄️  初始化数据库连接...")
 	model.Init()

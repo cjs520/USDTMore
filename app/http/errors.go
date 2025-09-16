@@ -68,6 +68,10 @@ func IsRetryableError(err error) bool {
 		"network is unreachable",
 		"temporary failure",
 		"timeout",
+		"deadline exceeded",
+		"context deadline exceeded",
+		"client.timeout exceeded",
+		"awaiting headers",
 		"too many requests",
 		"rate limit",
 		"service unavailable",
@@ -76,6 +80,10 @@ func IsRetryableError(err error) bool {
 		"server too busy",
 		"unexpected error",
 		"etherscan api错误",
+		"api.etherscan.io",
+		"502 bad gateway",
+		"503 service unavailable",
+		"504 gateway timeout",
 	}
 
 	for _, retryable := range retryableErrors {
@@ -165,11 +173,16 @@ func GetRetryDelay(err error, attempt int) time.Duration {
 
 	switch classified.Type {
 	case "timeout":
-		// 超时错误使用较长的延迟
-		baseDelay = 2 * time.Second
+		// 超时错误使用较长的延迟，特别是对于Etherscan API
+		if strings.Contains(strings.ToLower(err.Error()), "etherscan") ||
+			strings.Contains(strings.ToLower(err.Error()), "deadline exceeded") {
+			baseDelay = 5 * time.Second // Etherscan API超时使用更长延迟
+		} else {
+			baseDelay = 2 * time.Second
+		}
 	case "rate_limit":
 		// 限流错误使用更长的延迟
-		baseDelay = 5 * time.Second
+		baseDelay = 10 * time.Second
 	case "server":
 		// 服务器错误使用中等延迟
 		baseDelay = 3 * time.Second
@@ -180,8 +193,13 @@ func GetRetryDelay(err error, attempt int) time.Duration {
 	// 指数退避算法：延迟时间 = baseDelay * (2^attempt)
 	delay := baseDelay * time.Duration(1<<uint(attempt))
 
-	// 限制最大延迟时间为30秒
+	// 对于Etherscan API，限制最大延迟时间为60秒
 	maxDelay := 30 * time.Second
+	if strings.Contains(strings.ToLower(err.Error()), "etherscan") ||
+		strings.Contains(strings.ToLower(err.Error()), "deadline exceeded") {
+		maxDelay = 60 * time.Second
+	}
+
 	if delay > maxDelay {
 		delay = maxDelay
 	}

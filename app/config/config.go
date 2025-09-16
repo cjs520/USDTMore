@@ -1,7 +1,6 @@
 package config
 
 import (
-	"USDTMore/app/help"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -10,22 +9,24 @@ import (
 	"strings"
 	"time"
 
+	"USDTMore/app/help"
+
 	"github.com/shopspring/decimal"
 )
 
-const defaultExpireTime = 600 * time.Second         // 订单默认有效期 10分钟
-const defaultUsdtRate = 7.4           // 默认汇率
-const defaultAuthToken = "123234"     // 默认授权码
-const defaultListen = ":6080"         // 默认监听地址
-const TronServerApiScan = "TRON_SCAN" //
-const TronServerApiGrid = "TRON_GRID" //
-const defaultPaymentMinAmount = 0.01  //
-const defaultPaymentMaxAmount = 99999 //
+const defaultExpireTime = 600 * time.Second // 订单默认有效期 10分钟
+const defaultUsdtRate = 7.4                 // 默认汇率
+const defaultAuthToken = "123234"           // 默认授权码
+const defaultListen = ":6080"               // 默认监听地址
+const TronServerApiScan = "TRON_SCAN"       //
+const TronServerApiGrid = "TRON_GRID"       //
+const defaultPaymentMinAmount = 0.01        //
+const defaultPaymentMaxAmount = 99999       //
 
 // 网络请求配置常量
-const defaultHttpTimeout = 30 // HTTP请求默认超时时间（秒）
-const defaultMaxRetries = 3   // 默认最大重试次数
-const defaultRetryDelay = 1   // 默认重试延迟（秒）
+const defaultHttpTimeout = 120 // HTTP请求默认超时时间（秒）- 增加到120秒
+const defaultMaxRetries = 3    // 默认最大重试次数
+const defaultRetryDelay = 2    // 默认重试延迟（秒）- 增加到2秒
 
 // Web3 API提供商常量
 const WEB3_PROVIDER_MORALIS = "MORALIS"
@@ -192,7 +193,7 @@ func initEtherscanApiKeys() {
 		} else {
 			keyName = fmt.Sprintf("ETHERSCAN_API_KEY_%d", i)
 		}
-		
+
 		if data := help.GetEnv(keyName); data != "" {
 			etherscanApiKeys = append(etherscanApiKeys, strings.TrimSpace(data))
 		}
@@ -226,16 +227,16 @@ func GetEtherscanApiKey() string {
 	if len(etherscanApiKeys) == 0 {
 		initEtherscanApiKeys()
 	}
-	
+
 	if len(etherscanApiKeys) == 0 {
 		return ""
 	}
-	
+
 	// 如果只有一个API Key，直接返回
 	if len(etherscanApiKeys) == 1 {
 		return etherscanApiKeys[0]
 	}
-	
+
 	// 轮询使用多个API Key
 	key := etherscanApiKeys[currentKeyIndex]
 	currentKeyIndex = (currentKeyIndex + 1) % len(etherscanApiKeys)
@@ -267,10 +268,14 @@ func GetOptimismExplorerApiKey() string {
 }
 
 /*
-获得BSC接口的API密钥（已弃用，建议使用GetEtherscanApiKey）
+获得BSC接口的API密钥（已弃用）
+BSC现在使用专用的Web3 API提供商，不再依赖Etherscan API
+请使用 GetBscWeb3Provider() 和相应的API密钥函数
 */
 func GetBscExplorerApiKey() string {
-	return GetEtherscanApiKey()
+	// BSC已不再使用Etherscan API，此函数仅为向后兼容保留
+	// 请使用 MORALIS_API_KEY, QUICKNODE_API_KEY 或 ALCHEMY_API_KEY
+	return ""
 }
 
 /*
@@ -381,18 +386,23 @@ func GetAptosContractAddress() string {
 
 /*
 获取BSC Web3 API提供商类型
-支持: MORALIS, QUICKNODE, ALCHEMY, ETHERSCAN
-默认: ETHERSCAN (向后兼容)
+支持: MORALIS, QUICKNODE, ALCHEMY
+默认: MORALIS (推荐)
+注意: ETHERSCAN 提供商已弃用，不再支持
 */
 func GetBscWeb3Provider() string {
 	if data := help.GetEnv("BSC_WEB3_PROVIDER"); data != "" {
 		provider := strings.ToUpper(strings.TrimSpace(data))
 		switch provider {
-		case WEB3_PROVIDER_MORALIS, WEB3_PROVIDER_QUICKNODE, WEB3_PROVIDER_ALCHEMY, WEB3_PROVIDER_ETHERSCAN:
+		case WEB3_PROVIDER_MORALIS, WEB3_PROVIDER_QUICKNODE, WEB3_PROVIDER_ALCHEMY:
 			return provider
+		case WEB3_PROVIDER_ETHERSCAN:
+			// ETHERSCAN已弃用，自动切换到MORALIS
+			fmt.Printf("警告: BSC_WEB3_PROVIDER=ETHERSCAN 已弃用，自动切换到 MORALIS\n")
+			return WEB3_PROVIDER_MORALIS
 		}
 	}
-	return WEB3_PROVIDER_ETHERSCAN // 默认使用Etherscan兼容性
+	return WEB3_PROVIDER_MORALIS // 默认使用Moralis
 }
 
 /*
@@ -806,6 +816,23 @@ func ValidateSecurityConfig() []string {
 	// 检查EVM兼容链API密钥
 	if GetEtherscanApiKey() == "" {
 		warnings = append(warnings, "ETHERSCAN_API_KEY是必需的，用于EVM兼容链交易查询")
+	}
+
+	// 检查BSC Web3 API配置
+	bscProvider := GetBscWeb3Provider()
+	switch bscProvider {
+	case WEB3_PROVIDER_MORALIS:
+		if GetMoralisApiKey() == "" {
+			warnings = append(warnings, "BSC使用MORALIS提供商，但MORALIS_API_KEY未设置")
+		}
+	case WEB3_PROVIDER_QUICKNODE:
+		if GetQuickNodeApiKey() == "" || GetQuickNodeEndpoint() == "" {
+			warnings = append(warnings, "BSC使用QUICKNODE提供商，但QUICKNODE_API_KEY或QUICKNODE_ENDPOINT未设置")
+		}
+	case WEB3_PROVIDER_ALCHEMY:
+		if GetAlchemyApiKey() == "" {
+			warnings = append(warnings, "BSC使用ALCHEMY提供商，但ALCHEMY_API_KEY未设置")
+		}
 	}
 
 	// 检查数据库配置
