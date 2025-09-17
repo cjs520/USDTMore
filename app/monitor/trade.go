@@ -1465,7 +1465,7 @@ func getUsdtBscTransByMoralis(_toAddress string) (gjson.Result, error) {
 	// 设置查询参数
 	params := url.Values{}
 	params.Add("chain", "bsc")
-	params.Add("contract_addresses", config.GetBscExplorerContractAddress()) // 修正参数名
+	params.Add("token_addresses", config.GetBscExplorerContractAddress()) // 使用正确的参数名
 	params.Add("limit", "50")
 	params.Add("order", "DESC") // 按时间倒序，获取最新交易
 
