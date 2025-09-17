@@ -8,18 +8,32 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"net/http/cookiejar"
+	"net/url"
+	"strings"
+	"sync"
 	"time"
 )
 
 // HTTPClient 统一的HTTP客户端配置
 type HTTPClient struct {
-	client *http.Client
+	client           *http.Client
+	EtherscanLimiter *EtherscanRateLimiter
+	sessionWarmedUp  map[string]bool // 记录已预热的域名
+	sessionMutex     sync.RWMutex    // 保护sessionWarmedUp的并发访问
 }
 
 // NewHTTPClient 创建新的HTTP客户端，包含连接池和超时配置
 func NewHTTPClient() *HTTPClient {
 	// 从配置文件获取超时时间，针对Etherscan API优化
 	httpTimeout := time.Duration(config.GetHttpTimeout()) * time.Second
+
+	// 创建Cookie jar以支持会话管理
+	jar, err := cookiejar.New(nil)
+	if err != nil {
+		log.Error("创建Cookie jar失败:", err)
+		jar = nil
+	}
 
 	transport := &http.Transport{
 		// 连接池配置 - 针对Etherscan API优化
@@ -52,6 +66,7 @@ func NewHTTPClient() *HTTPClient {
 	client := &http.Client{
 		Transport: transport,
 		Timeout:   httpTimeout, // 使用配置的超时时间
+		Jar:       jar,         // 启用Cookie支持
 
 		// 自动处理重定向
 		CheckRedirect: func(req *http.Request, via []*http.Request) error {
@@ -63,7 +78,11 @@ func NewHTTPClient() *HTTPClient {
 		},
 	}
 
-	return &HTTPClient{client: client}
+	return &HTTPClient{
+		client:           client,
+		EtherscanLimiter: NewEtherscanRateLimiter(),
+		sessionWarmedUp:  make(map[string]bool),
+	}
 }
 
 // DoWithRetry 执行HTTP请求，包含重试机制
@@ -132,14 +151,29 @@ func (c *HTTPClient) DoWithRetry(req *http.Request, maxRetries int) (*http.Respo
 	return nil, fmt.Errorf("请求失败，已重试%d次: %w", maxRetries, lastErr)
 }
 
-// Get 执行GET请求，包含重试机制
+// Get 执行GET请求，包含重试机制和Etherscan会话预热
 func (c *HTTPClient) Get(url string, headers map[string]string, maxRetries int) (*http.Response, error) {
+	// 检查是否为Etherscan域名，如果是则先预热会话
+	if isEtherscan, domain := c.isEtherscanDomain(url); isEtherscan {
+		if err := c.WarmupEtherscanSession(domain); err != nil {
+			log.Warn(fmt.Sprintf("预热 %s 会话失败: %v", domain, err))
+		}
+
+		// 应用Etherscan API限流
+		c.EtherscanLimiter.Wait()
+	}
+
 	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
 		return nil, fmt.Errorf("创建GET请求失败: %w", err)
 	}
 
-	// 设置请求头
+	// 为Etherscan请求设置浏览器头部
+	if isEtherscan, _ := c.isEtherscanDomain(url); isEtherscan {
+		c.setBrowserHeaders(req)
+	}
+
+	// 设置用户自定义请求头（会覆盖默认头部）
 	for key, value := range headers {
 		req.Header.Set(key, value)
 	}
@@ -172,6 +206,119 @@ func GetResponseBody(resp *http.Response) ([]byte, error) {
 	}
 
 	return body, nil
+}
+
+// WarmupEtherscanSession 预热Etherscan会话，获取必要的cookies
+func (c *HTTPClient) WarmupEtherscanSession(domain string) error {
+	c.sessionMutex.RLock()
+	if c.sessionWarmedUp[domain] {
+		c.sessionMutex.RUnlock()
+		return nil // 已经预热过
+	}
+	c.sessionMutex.RUnlock()
+
+	c.sessionMutex.Lock()
+	defer c.sessionMutex.Unlock()
+
+	// 双重检查
+	if c.sessionWarmedUp[domain] {
+		return nil
+	}
+
+	log.Info(fmt.Sprintf("开始预热 %s 会话...", domain))
+
+	// 构建主页URL
+	homeURL := fmt.Sprintf("https://%s", domain)
+
+	// 创建预热请求
+	req, err := http.NewRequest("GET", homeURL, nil)
+	if err != nil {
+		return fmt.Errorf("创建预热请求失败: %w", err)
+	}
+
+	// 设置完整的浏览器头部
+	c.setBrowserHeaders(req)
+
+	// 执行预热请求
+	resp, err := c.client.Do(req)
+	if err != nil {
+		return fmt.Errorf("预热请求失败: %w", err)
+	}
+	defer resp.Body.Close()
+
+	// 读取响应体（模拟浏览器行为）
+	_, err = io.ReadAll(resp.Body)
+	if err != nil {
+		log.Warn("读取预热响应失败:", err)
+	}
+
+	// 等待一段时间，模拟用户浏览行为
+	time.Sleep(2 * time.Second)
+
+	// 标记为已预热
+	c.sessionWarmedUp[domain] = true
+	log.Info(fmt.Sprintf("%s 会话预热完成", domain))
+
+	return nil
+}
+
+// setBrowserHeaders 设置完整的浏览器特征头部
+func (c *HTTPClient) setBrowserHeaders(req *http.Request) {
+	// 基于用户提供的成功curl请求设置头部
+	headers := map[string]string{
+		"User-Agent":                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36",
+		"Accept":                    "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7",
+		"Accept-Language":           "zh-CN,zh;q=0.9,en;q=0.8",
+		"Accept-Encoding":           "gzip, deflate, br",
+		"DNT":                       "1",
+		"Connection":                "keep-alive",
+		"Upgrade-Insecure-Requests": "1",
+		"Sec-Fetch-Dest":            "document",
+		"Sec-Fetch-Mode":            "navigate",
+		"Sec-Fetch-Site":            "none",
+		"Sec-Fetch-User":            "?1",
+		"Cache-Control":             "max-age=0",
+		"sec-ch-ua":                 `"Google Chrome";v="119", "Chromium";v="119", "Not?A_Brand";v="24"`,
+		"sec-ch-ua-mobile":          "?0",
+		"sec-ch-ua-platform":        `"Windows"`,
+	}
+
+	for key, value := range headers {
+		req.Header.Set(key, value)
+	}
+}
+
+// isEtherscanDomain 检查是否为Etherscan相关域名
+func (c *HTTPClient) isEtherscanDomain(urlStr string) (bool, string) {
+	u, err := url.Parse(urlStr)
+	if err != nil {
+		return false, ""
+	}
+
+	domain := u.Host
+	etherscanDomains := []string{
+		"api.etherscan.io",
+		"api-sepolia.etherscan.io",
+		"api-holesky.etherscan.io",
+		"api.bscscan.com",
+		"api-testnet.bscscan.com",
+		"api.polygonscan.com",
+		"api-testnet.polygonscan.com",
+		"api.arbiscan.io",
+		"api-sepolia.arbiscan.io",
+		"api.optimistic.etherscan.io",
+		"api-sepolia-optimistic.etherscan.io",
+		"api.basescan.org",
+		"api-sepolia.basescan.org",
+	}
+
+	for _, ethDomain := range etherscanDomains {
+		if strings.Contains(domain, ethDomain) {
+			return true, ethDomain
+		}
+	}
+
+	return false, ""
 }
 
 // 全局HTTP客户端实例
