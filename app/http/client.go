@@ -227,32 +227,49 @@ func (c *HTTPClient) WarmupEtherscanSession(domain string) error {
 
 	log.Info(fmt.Sprintf("开始预热 %s 会话...", domain))
 
-	// 构建主页URL
-	homeURL := fmt.Sprintf("https://%s", domain)
-
-	// 创建预热请求
-	req, err := http.NewRequest("GET", homeURL, nil)
-	if err != nil {
-		return fmt.Errorf("创建预热请求失败: %w", err)
+	// 多步预热过程，模拟真实用户行为
+	steps := []string{
+		fmt.Sprintf("https://%s", domain),      // 主页
+		fmt.Sprintf("https://%s/apis", domain), // API文档页面
+		fmt.Sprintf("https://%s/api", domain),  // API页面
 	}
 
-	// 设置完整的浏览器头部
-	c.setBrowserHeaders(req)
+	for i, stepURL := range steps {
+		// 创建预热请求
+		req, err := http.NewRequest("GET", stepURL, nil)
+		if err != nil {
+			log.Warn(fmt.Sprintf("创建预热请求失败 (步骤 %d): %v", i+1, err))
+			continue
+		}
 
-	// 执行预热请求
-	resp, err := c.client.Do(req)
-	if err != nil {
-		return fmt.Errorf("预热请求失败: %w", err)
+		// 设置浏览器头部，第一步用document模式，后续用navigate模式
+		if i == 0 {
+			c.setBrowserHeadersForDocument(req)
+		} else {
+			c.setBrowserHeadersForNavigate(req, steps[i-1])
+		}
+
+		// 执行预热请求
+		resp, err := c.client.Do(req)
+		if err != nil {
+			log.Warn(fmt.Sprintf("预热请求失败 (步骤 %d): %v", i+1, err))
+			continue
+		}
+
+		// 读取响应体（模拟浏览器行为）
+		_, err = io.ReadAll(resp.Body)
+		resp.Body.Close()
+		if err != nil {
+			log.Warn(fmt.Sprintf("读取预热响应失败 (步骤 %d): %v", i+1, err))
+		}
+
+		// 步骤间等待，模拟用户浏览行为
+		if i < len(steps)-1 {
+			time.Sleep(1 * time.Second)
+		}
 	}
-	defer resp.Body.Close()
 
-	// 读取响应体（模拟浏览器行为）
-	_, err = io.ReadAll(resp.Body)
-	if err != nil {
-		log.Warn("读取预热响应失败:", err)
-	}
-
-	// 等待一段时间，模拟用户浏览行为
+	// 最终等待
 	time.Sleep(2 * time.Second)
 
 	// 标记为已预热
@@ -262,9 +279,8 @@ func (c *HTTPClient) WarmupEtherscanSession(domain string) error {
 	return nil
 }
 
-// setBrowserHeaders 设置完整的浏览器特征头部
-func (c *HTTPClient) setBrowserHeaders(req *http.Request) {
-	// 基于用户提供的成功curl请求设置头部
+// setBrowserHeadersForDocument 设置文档请求的浏览器头部
+func (c *HTTPClient) setBrowserHeadersForDocument(req *http.Request) {
 	headers := map[string]string{
 		"User-Agent":                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36",
 		"Accept":                    "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7",
@@ -281,6 +297,63 @@ func (c *HTTPClient) setBrowserHeaders(req *http.Request) {
 		"sec-ch-ua":                 `"Google Chrome";v="119", "Chromium";v="119", "Not?A_Brand";v="24"`,
 		"sec-ch-ua-mobile":          "?0",
 		"sec-ch-ua-platform":        `"Windows"`,
+	}
+
+	for key, value := range headers {
+		req.Header.Set(key, value)
+	}
+}
+
+// setBrowserHeadersForNavigate 设置导航请求的浏览器头部
+func (c *HTTPClient) setBrowserHeadersForNavigate(req *http.Request, referer string) {
+	headers := map[string]string{
+		"User-Agent":                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36",
+		"Accept":                    "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7",
+		"Accept-Language":           "zh-CN,zh;q=0.9,en;q=0.8",
+		"Accept-Encoding":           "gzip, deflate, br",
+		"DNT":                       "1",
+		"Connection":                "keep-alive",
+		"Upgrade-Insecure-Requests": "1",
+		"Sec-Fetch-Dest":            "document",
+		"Sec-Fetch-Mode":            "navigate",
+		"Sec-Fetch-Site":            "same-origin",
+		"Cache-Control":             "max-age=0",
+		"Referer":                   referer,
+		"sec-ch-ua":                 `"Google Chrome";v="119", "Chromium";v="119", "Not?A_Brand";v="24"`,
+		"sec-ch-ua-mobile":          "?0",
+		"sec-ch-ua-platform":        `"Windows"`,
+	}
+
+	for key, value := range headers {
+		req.Header.Set(key, value)
+	}
+}
+
+// setBrowserHeaders 设置完整的浏览器特征头部
+func (c *HTTPClient) setBrowserHeaders(req *http.Request) {
+	// 基于用户提供的成功curl请求设置头部
+	headers := map[string]string{
+		"User-Agent":                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36",
+		"Accept":                    "application/json, text/plain, */*",
+		"Accept-Language":           "zh-CN,zh;q=0.9,en;q=0.8",
+		"Accept-Encoding":           "gzip, deflate, br",
+		"DNT":                       "1",
+		"Connection":                "keep-alive",
+		"Upgrade-Insecure-Requests": "1",
+		"Sec-Fetch-Dest":            "empty",
+		"Sec-Fetch-Mode":            "cors",
+		"Sec-Fetch-Site":            "same-origin",
+		"Cache-Control":             "no-cache",
+		"Pragma":                    "no-cache",
+		"sec-ch-ua":                 `"Google Chrome";v="119", "Chromium";v="119", "Not?A_Brand";v="24"`,
+		"sec-ch-ua-mobile":          "?0",
+		"sec-ch-ua-platform":        `"Windows"`,
+	}
+
+	// 为API请求添加Referer头部
+	if strings.Contains(req.URL.String(), "/api") {
+		u, _ := url.Parse(req.URL.String())
+		headers["Referer"] = fmt.Sprintf("https://%s/", u.Host)
 	}
 
 	for key, value := range headers {
