@@ -1469,26 +1469,29 @@ func getUsdtBscTransByMoralis(_toAddress string) (gjson.Result, error) {
 	params.Add("limit", "50")
 	params.Add("order", "DESC") // 按时间倒序，获取最新交易
 
-	// 扩大区块监控范围或移除限制以确保能查询到交易
-	if config.GetBscMonitorMode() == "RECENT" {
-		// 获取当前区块高度并计算起始区块 - 扩大范围到1000个区块
-		currentBlock, err := getBscCurrentBlockNumber()
-		if err == nil {
-			// 扩大监控范围到1000个区块，确保不遗漏交易
-			blockRange := config.GetBscRecentBlockRange()
-			if blockRange < 1000 {
-				blockRange = 1000 // 最小1000个区块
-			}
-			startBlock := currentBlock - int64(blockRange)
-			if startBlock > 0 {
-				params.Add("from_block", strconv.FormatInt(startBlock, 10))
-				log.Info(fmt.Sprintf("[BSC-Moralis] 监控区块范围: %d - %d (共%d个区块)", startBlock, currentBlock, blockRange))
+	// 为了确保能查询到交易，暂时移除区块范围限制
+	// 根据实际情况，最新交易可能在很久之前的区块中
+	log.Info("[BSC-Moralis] 查询所有历史交易（无区块限制）- 确保能获取到数据")
+
+	// 注释掉区块范围限制，查询所有历史交易
+	/*
+		if config.GetBscMonitorMode() == "RECENT" {
+			// 获取当前区块高度并计算起始区块
+			currentBlock, err := getBscCurrentBlockNumber()
+			if err == nil {
+				// 扩大监控范围，确保不遗漏交易
+				blockRange := config.GetBscRecentBlockRange()
+				if blockRange < 10000 { // 扩大到10000个区块
+					blockRange = 10000
+				}
+				startBlock := currentBlock - int64(blockRange)
+				if startBlock > 0 {
+					params.Add("from_block", strconv.FormatInt(startBlock, 10))
+					log.Info(fmt.Sprintf("[BSC-Moralis] 监控区块范围: %d - %d (共%d个区块)", startBlock, currentBlock, blockRange))
+				}
 			}
 		}
-	} else {
-		// 如果不是RECENT模式，不设置from_block，查询所有历史交易
-		log.Info("[BSC-Moralis] 查询所有历史交易（无区块限制）")
-	}
+	*/
 
 	finalURL := requestURL + "?" + params.Encode()
 
