@@ -919,54 +919,43 @@ func requestAddress(baseUrl string, query string) []byte {
 }
 
 /*
-所有ETH兼容链路的到账监控，使用Etherscan V2 API避免服务中断
+所有ETH兼容链路的到账监控，使用正确的专用API端点
 */
 func getUsdtTransByETH(chain string, address string) (gjson.Result, error) {
 	// 累计所有交易的 Value 来计算总交易量
 	var wa model.WalletAddress
 
-	// 根据不同链类型使用对应的API端点
-	var host string
-	var chainId string
-	var apiKey string
-	var contractAddress string
+	// 获取API端点配置
+	apiConfig := config.GetEVMChainAPIEndpoints(chain)
+	if apiConfig == nil {
+		return gjson.Result{}, fmt.Errorf("不支持的链类型: %s", chain)
+	}
 
-	// 根据链类型设置API端点、chainid和相关配置
+	// BSC链不使用此函数，应该使用专用的Web3 API
+	if chain == "BSC" {
+		return gjson.Result{}, fmt.Errorf("BSC链不支持通用ETH查询，请使用专用的BSC Web3 API")
+	}
+
+	// 获取合约地址和API Key
+	var contractAddress string
 	switch chain {
 	case "POLY":
-		host = "https://api.etherscan.io/v2/api" // Polygon使用Etherscan V2 API
-		chainId = "137"                          // Polygon chainid
 		contractAddress = config.GetPolygonScanContractAddress()
-		apiKey = config.GetEtherscanApiKey()
 	case "OP":
-		host = "https://api.etherscan.io/v2/api" // Optimism使用Etherscan V2 API
-		chainId = "10"                           // Optimism chainid
 		contractAddress = config.GetOptimismExplorerContractAddress()
-		apiKey = config.GetEtherscanApiKey()
-	case "BSC":
-		// BSC不再使用通用ETH函数，应该直接调用专用函数
-		return gjson.Result{}, fmt.Errorf("BSC链不支持通用ETH查询，请使用专用的BSC Web3 API")
 	case "ARB":
-		host = "https://api.etherscan.io/v2/api" // Arbitrum使用Etherscan V2 API
-		chainId = "42161"                        // Arbitrum One chainid
 		contractAddress = config.GetArbitrumContractAddress()
-		apiKey = config.GetEtherscanApiKey()
 	case "XLAYER":
-		host = "https://api.etherscan.io/v2/api" // X-Layer使用Etherscan V2 API
-		chainId = "196"                          // X-Layer chainid
 		contractAddress = config.GetXLayerContractAddress()
-		apiKey = config.GetEtherscanApiKey()
 	default:
 		return gjson.Result{}, fmt.Errorf("不支持的链类型: %s", chain)
 	}
 
+	apiKey := config.GetEtherscanApiKey()
+
 	// 验证API Key配置
 	if apiKey == "" {
-		if chain == "BSC" {
-			return gjson.Result{}, fmt.Errorf("[%s] BSC_SCAN_API_KEY或ETHERSCAN_API_KEY未配置", chain)
-		} else {
-			return gjson.Result{}, fmt.Errorf("[%s] ETHERSCAN_API_KEY未配置", chain)
-		}
+		return gjson.Result{}, fmt.Errorf("[%s] ETHERSCAN_API_KEY未配置", chain)
 	}
 
 	// 简单验证API Key格式（应该是20位以上字符串）
@@ -977,119 +966,100 @@ func getUsdtTransByETH(chain string, address string) (gjson.Result, error) {
 	if model.DB.Where("chain = ? and address = ?", chain, address).First(&wa).Error == nil {
 		// 使用合理的endblock值，避免超出区块范围
 		endBlock := "latest"
-		if chain == "BSC" || chain == "POLY" {
-			// 对于可能较新的链，使用latest标签更安全
-			endBlock = "latest"
-		} else {
-			// 对于其他链，使用一个合理的大数值
-			endBlock = strconv.FormatInt(wa.StartBlock+10000000, 10)
+
+		// 获取所有可用的API端点（主要+备用）
+		endpoints := apiConfig.GetAllEndpoints()
+		if len(endpoints) == 0 {
+			return gjson.Result{}, fmt.Errorf("[%s] 没有可用的API端点", chain)
 		}
 
-		// 构造API请求参数 - 统一使用Etherscan V2格式
-		var queryTx string
-		if endBlock == "latest" {
-			queryTx = "chainid=" + chainId + "&module=account&action=tokentx&contractaddress=" + contractAddress + "&address=" + address + "&page=1&offset=100&startblock=" + strconv.FormatInt(wa.StartBlock+1, 10) + "&endblock=latest&sort=asc&apikey=" + apiKey
-		} else {
-			queryTx = "chainid=" + chainId + "&module=account&action=tokentx&contractaddress=" + contractAddress + "&address=" + address + "&page=1&offset=100&startblock=" + strconv.FormatInt(wa.StartBlock+1, 10) + "&endblock=" + endBlock + "&sort=asc&apikey=" + apiKey
-		}
-
-		// 记录API请求详情（隐藏API Key）
-		maskedQuery := strings.Replace(queryTx, apiKey, "***", 1)
-		log.Info(fmt.Sprintf("[%s] API请求: %s?%s", chain, host, maskedQuery))
-
-		// 首先尝试tokentx查询
-		allTx := requestAddress(host, queryTx)
 		var resultTx gjson.Result
 		var querySuccess bool = false
 
-		if allTx != nil {
-			resultTx = gjson.ParseBytes(allTx)
+		// 尝试所有可用的API端点
+		for i, endpoint := range endpoints {
+			log.Info(fmt.Sprintf("尝试使用 %s 查询 %s 链交易 (尝试 %d/%d)",
+				apiConfig.GetDisplayName(endpoint), chain, i+1, len(endpoints)))
 
-			// 记录原始响应（用于调试）
-			if config.IsRequestLogEnabled() {
-				log.Info(fmt.Sprintf("[%s] tokentx API响应: %s", chain, string(allTx)))
+			// 构建查询参数 - 根据API类型调整格式
+			extraParams := map[string]string{
+				"contractaddress": contractAddress,
+				"page":            "1",
+				"offset":          "100",
+				"startblock":      strconv.FormatInt(wa.StartBlock+1, 10),
+				"endblock":        endBlock,
+				"sort":            "asc",
 			}
 
-			// 检查API响应状态
-			status := resultTx.Get("status").String()
-			message := resultTx.Get("message").String()
+			// Etherscan V2 API需要chainid参数，专用API不需要
+			// chainid参数会在BuildQueryURL中自动添加，这里不需要手动添加
 
-			if status == "1" {
-				querySuccess = true
-				log.Debug(fmt.Sprintf("[%s] tokentx查询成功", chain))
-			} else if strings.Contains(strings.ToLower(message), "no transactions found") {
-				querySuccess = true // 无交易记录也是成功的响应
-				log.Debug(fmt.Sprintf("[%s] tokentx查询成功，暂无新交易", chain))
-			}
-		}
+			queryTx := apiConfig.BuildQueryURL(endpoint, "account", "tokentx", address, apiKey, extraParams)
 
-		// 如果tokentx查询失败，尝试txlistinternal作为备用
-		if !querySuccess {
-			log.Info(fmt.Sprintf("[%s] tokentx查询失败，尝试txlistinternal备用查询", chain))
+			// 记录API请求详情（隐藏API Key）
+			maskedQuery := strings.Replace(queryTx, apiKey, "***", 1)
+			log.Info(fmt.Sprintf("[%s] API请求: %s", chain, maskedQuery))
 
-			var backupQuery string
-			if endBlock == "latest" {
-				backupQuery = "chainid=" + chainId + "&module=account&action=txlistinternal&address=" + address + "&page=1&offset=100&startblock=" + strconv.FormatInt(wa.StartBlock+1, 10) + "&endblock=latest&sort=asc&apikey=" + apiKey
-			} else {
-				backupQuery = "chainid=" + chainId + "&module=account&action=txlistinternal&address=" + address + "&page=1&offset=100&startblock=" + strconv.FormatInt(wa.StartBlock+1, 10) + "&endblock=" + endBlock + "&sort=asc&apikey=" + apiKey
-			}
+			// 首先尝试tokentx查询
+			allTx := requestAddress(endpoint, strings.Split(queryTx, "?")[1])
+			if allTx != nil {
+				resultTx = gjson.ParseBytes(allTx)
 
-			maskedBackupQuery := strings.Replace(backupQuery, apiKey, "***", 1)
-			log.Info(fmt.Sprintf("[%s] 备用API请求: %s?%s", chain, host, maskedBackupQuery))
-
-			backupTx := requestAddress(host, backupQuery)
-			if backupTx != nil {
-				backupResult := gjson.ParseBytes(backupTx)
+				// 记录原始响应（用于调试）
 				if config.IsRequestLogEnabled() {
-					log.Info(fmt.Sprintf("[%s] txlistinternal API响应: %s", chain, string(backupTx)))
+					log.Info(fmt.Sprintf("[%s] tokentx API响应: %s", chain, string(allTx)))
 				}
 
-				backupStatus := backupResult.Get("status").String()
-				if backupStatus == "1" {
-					resultTx = backupResult
+				// 检查API响应状态
+				status := resultTx.Get("status").String()
+				message := resultTx.Get("message").String()
+
+				if status == "1" {
 					querySuccess = true
-					log.Info(fmt.Sprintf("[%s] txlistinternal备用查询成功", chain))
+					log.Info(fmt.Sprintf("[%s] tokentx查询成功，使用端点: %s", chain, apiConfig.GetDisplayName(endpoint)))
+					break
+				} else if strings.Contains(strings.ToLower(message), "no transactions found") {
+					querySuccess = true // 无交易记录也是成功的响应
+					log.Debug(fmt.Sprintf("[%s] tokentx查询成功，暂无新交易，使用端点: %s", chain, apiConfig.GetDisplayName(endpoint)))
+					break
+				} else {
+					log.Warn(fmt.Sprintf("[%s] 端点 %s 查询失败: %s", chain, apiConfig.GetDisplayName(endpoint), message))
+				}
+			} else {
+				log.Warn(fmt.Sprintf("[%s] 端点 %s 请求失败", chain, apiConfig.GetDisplayName(endpoint)))
+			}
+
+			// 如果tokentx查询失败，尝试txlistinternal作为备用
+			if !querySuccess && i == len(endpoints)-1 {
+				log.Info(fmt.Sprintf("[%s] 所有tokentx查询都失败，尝试txlistinternal备用查询", chain))
+
+				extraParams["action"] = "txlistinternal"
+				delete(extraParams, "contractaddress") // txlistinternal不需要合约地址
+
+				backupQuery := apiConfig.BuildQueryURL(endpoint, "account", "txlistinternal", address, apiKey, extraParams)
+				maskedBackupQuery := strings.Replace(backupQuery, apiKey, "***", 1)
+				log.Info(fmt.Sprintf("[%s] 备用API请求: %s", chain, maskedBackupQuery))
+
+				backupTx := requestAddress(endpoint, strings.Split(backupQuery, "?")[1])
+				if backupTx != nil {
+					backupResult := gjson.ParseBytes(backupTx)
+					if config.IsRequestLogEnabled() {
+						log.Info(fmt.Sprintf("[%s] txlistinternal API响应: %s", chain, string(backupTx)))
+					}
+
+					backupStatus := backupResult.Get("status").String()
+					if backupStatus == "1" {
+						resultTx = backupResult
+						querySuccess = true
+						log.Info(fmt.Sprintf("[%s] txlistinternal备用查询成功", chain))
+					}
 				}
 			}
 		}
 
 		if !querySuccess {
-			// 分析详细错误信息
-			status := resultTx.Get("status").String()
-			message := resultTx.Get("message").String()
-			result := resultTx.Get("result").String()
-
-			// 详细的错误分析和处理
-			// 检查是否是正常的"无交易记录"情况
-			if strings.Contains(strings.ToLower(message), "no transactions found") {
-				log.Debug(fmt.Sprintf("[%s] 地址 %s 暂无新交易", chain, address))
-				return gjson.Result{}, nil
-			}
-
-			// 分析具体的错误类型
-			var errorDetail string
-			switch message {
-			case "NOTOK":
-				if result != "" {
-					errorDetail = fmt.Sprintf("API参数错误: %s", result)
-				} else {
-					errorDetail = "API参数错误，可能原因：API Key无效、参数格式错误、区块范围错误"
-				}
-			case "Max rate limit reached":
-				errorDetail = "API调用频率超限，请稍后重试"
-			case "Invalid API Key":
-				errorDetail = "API Key无效，请检查ETHERSCAN_API_KEY配置"
-			default:
-				errorDetail = fmt.Sprintf("未知错误: %s", message)
-				if result != "" {
-					errorDetail += fmt.Sprintf(" - %s", result)
-				}
-			}
-
-			log.Error(fmt.Sprintf("[%s] Etherscan API错误 - 地址: %s, 状态: %s, 消息: %s, 详情: %s",
-				chain, address, status, message, errorDetail))
-
-			return gjson.Result{}, fmt.Errorf("Etherscan API错误: %s", errorDetail)
+			log.Error(fmt.Sprintf("[%s] 所有API端点都失败了，无法查询链交易", chain))
+			return gjson.Result{}, fmt.Errorf("所有API端点都不可用，链路：%s，地址：%s", chain, address)
 		}
 
 		// 更新StartBlock - 处理最新的区块号，避免重复查询

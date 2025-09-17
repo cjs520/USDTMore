@@ -511,18 +511,23 @@ func requestAddress(baseUrl string, query string) []byte {
 }
 
 func getWalletInfoETH(name string, unit string, chain string, host string, apiKey string, contractAddress string, address string) string {
+	// BSC链使用专用的Web3 API，不使用此函数
+	if chain == "BSC" {
+		return getBscWalletInfo(address)
+	}
+
 	// 获取API端点配置
 	apiConfig := config.GetEVMChainAPIEndpoints(chain)
 	if apiConfig == nil {
 		log.Error(fmt.Sprintf("不支持的链类型: %s", chain))
-		return ""
+		return fmt.Sprintf("❌ 不支持的链类型：%s\n地址：%s", chain, address)
 	}
 
 	// 尝试所有可用的API端点
 	endpoints := apiConfig.GetAllEndpoints()
 	if len(endpoints) == 0 {
 		log.Error(fmt.Sprintf("没有可用的API端点: %s", chain))
-		return ""
+		return fmt.Sprintf("❌ 没有可用的API端点\n链路：%s\n地址：%s", name, address)
 	}
 
 	var resultETH gjson.Result
@@ -533,10 +538,14 @@ func getWalletInfoETH(name string, unit string, chain string, host string, apiKe
 		log.Info(fmt.Sprintf("尝试使用 %s 查询 %s 链余额 (尝试 %d/%d)",
 			apiConfig.GetDisplayName(endpoint), chain, i+1, len(endpoints)))
 
-		// 构建查询URL
+		// 构建查询URL - 根据API类型调整格式
 		extraParams := map[string]string{
 			"tag": "latest",
 		}
+
+		// Etherscan V2 API需要chainid参数，专用API不需要
+		// chainid参数会在BuildQueryURL中自动添加，这里不需要手动添加
+
 		queryURL := apiConfig.BuildQueryURL(endpoint, "account", "balance", address, apiKey, extraParams)
 
 		// 从完整URL中提取query部分
@@ -603,6 +612,9 @@ func getWalletInfoETH(name string, unit string, chain string, host string, apiKe
 	if successfulEndpoint == "" && len(endpoints) > 0 {
 		successfulEndpoint = endpoints[0]
 	}
+
+	// Etherscan V2 API需要chainid参数，专用API不需要
+	// chainid参数会在BuildQueryURL中自动添加，这里不需要手动添加
 
 	queryUSDTURL := apiConfig.BuildQueryURL(successfulEndpoint, "account", "tokentx", address, apiKey, extraParamsUSDT)
 	parts := strings.Split(queryUSDTURL, "?")
@@ -759,21 +771,41 @@ func getWalletInfoETH(name string, unit string, chain string, host string, apiKe
 获取Polygon的信息
 */
 func getWalletInfoByPOLAddress(address string) string {
-	return getWalletInfoETH("Polygon", "MATIC", "POLY", "https://api.etherscan.io/v2/api", config.GetEtherscanApiKey(), config.GetPolygonScanContractAddress(), address)
+	return getWalletInfoETH("Polygon", "MATIC", "POLY", "", config.GetEtherscanApiKey(), config.GetPolygonScanContractAddress(), address)
 }
 
 /*
 获取Optimism的信息
 */
 func getWalletInfoByOPTAddress(address string) string {
-	return getWalletInfoETH("Optimism", "ETH", "OP", "https://api.etherscan.io/v2/api", config.GetEtherscanApiKey(), config.GetOptimismExplorerContractAddress(), address)
+	return getWalletInfoETH("Optimism", "ETH", "OP", "", config.GetEtherscanApiKey(), config.GetOptimismExplorerContractAddress(), address)
 }
 
 /*
-获取BEP20的信息
+获取BEP20的信息 - BSC使用专用Web3 API
 */
 func getWalletInfoByBSCAddress(address string) string {
-	return getWalletInfoETH("BEP20", "BNB", "BSC", "https://api.etherscan.io/v2/api", config.GetEtherscanApiKey(), config.GetBscExplorerContractAddress(), address)
+	// BSC不再使用Etherscan API，使用专用的Web3提供商
+	return getBscWalletInfo(address)
+}
+
+/*
+BSC专用钱包信息查询函数
+*/
+func getBscWalletInfo(address string) string {
+	// 根据配置的Web3提供商选择不同的API
+	provider := config.GetBscWeb3Provider()
+
+	switch provider {
+	case config.WEB3_PROVIDER_MORALIS:
+		return "BSC钱包信息查询 (Moralis) - 功能开发中"
+	case config.WEB3_PROVIDER_QUICKNODE:
+		return "BSC钱包信息查询 (QuickNode) - 功能开发中"
+	case config.WEB3_PROVIDER_ALCHEMY:
+		return "BSC钱包信息查询 (Alchemy) - 功能开发中"
+	default:
+		return fmt.Sprintf("❌ BSC配置错误：不支持的Web3提供商 %s\n地址：%s", provider, address)
+	}
 }
 
 // verifyTransactionStatus 验证交易状态 - 使用Etherscan V2 Stats API

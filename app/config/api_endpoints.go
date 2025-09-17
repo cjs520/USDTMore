@@ -17,17 +17,17 @@ func GetEVMChainAPIEndpoints(chain string) *APIEndpointConfig {
 	switch strings.ToUpper(chain) {
 	case "POLY", "POLYGON":
 		return &APIEndpointConfig{
-			Primary: "https://api.polygonscan.com/api", // 使用Polygon专用API作为主要端点
+			Primary: "https://api.etherscan.io/v2/api", // 使用Etherscan V2 API作为主要端点
 			Fallbacks: []string{
-				"https://api.etherscan.io/api", // Etherscan V1 API作为备用
+				"https://api.polygonscan.com/api", // Polygon专用API作为备用
 			},
 			ChainID: "137",
 		}
 	case "OP", "OPTIMISM":
 		return &APIEndpointConfig{
-			Primary: "https://api-optimistic.etherscan.io/api", // 使用Optimism专用API作为主要端点
+			Primary: "https://api.etherscan.io/v2/api", // 使用Etherscan V2 API作为主要端点
 			Fallbacks: []string{
-				"https://api.etherscan.io/api", // Etherscan V1 API作为备用
+				"https://api-optimistic.etherscan.io/api", // Optimism专用API作为备用
 			},
 			ChainID: "10",
 		}
@@ -40,26 +40,28 @@ func GetEVMChainAPIEndpoints(chain string) *APIEndpointConfig {
 		}
 	case "ARB", "ARBITRUM":
 		return &APIEndpointConfig{
-			Primary: "https://api.arbiscan.io/api", // 使用Arbitrum专用API作为主要端点
+			Primary: "https://api.etherscan.io/v2/api", // 使用Etherscan V2 API作为主要端点
 			Fallbacks: []string{
-				"https://api.etherscan.io/api", // Etherscan V1 API作为备用
+				"https://api.arbiscan.io/api", // Arbitrum专用API作为备用
 			},
 			ChainID: "42161",
 		}
 	case "XLAYER":
 		return &APIEndpointConfig{
-			Primary: "https://www.oklink.com/api/explorer/v1/eth", // 使用OKLink API
+			Primary: "https://api.etherscan.io/v2/api", // 使用Etherscan V2 API作为主要端点
 			Fallbacks: []string{
-				"https://api.etherscan.io/api", // Etherscan V1 API作为备用
+				"https://www.oklink.com/api/explorer/v1/eth", // OKLink API作为备用
 			},
 			ChainID: "196",
 		}
 	default:
 		// 以太坊主网
 		return &APIEndpointConfig{
-			Primary:   "https://api.etherscan.io/api", // 使用Etherscan V1 API
-			Fallbacks: []string{},
-			ChainID:   "1",
+			Primary: "https://api.etherscan.io/v2/api", // 使用Etherscan V2 API
+			Fallbacks: []string{
+				"https://api.etherscan.io/api", // V1 API作为备用
+			},
+			ChainID: "1",
 		}
 	}
 }
@@ -78,14 +80,21 @@ func (config *APIEndpointConfig) GetAllEndpoints() []string {
 func (config *APIEndpointConfig) BuildQueryURL(endpoint, module, action, address, apiKey string, extraParams map[string]string) string {
 	var params []string
 
+	// 对于Etherscan V2 API，chainid参数必须放在最前面
+	if strings.Contains(endpoint, "api.etherscan.io/v2") {
+		params = append(params, fmt.Sprintf("chainid=%s", config.ChainID))
+	}
+
 	// 基本参数 - 所有API都使用标准格式
 	params = append(params, fmt.Sprintf("module=%s", module))
 	params = append(params, fmt.Sprintf("action=%s", action))
 	params = append(params, fmt.Sprintf("address=%s", address))
 
-	// 额外参数
+	// 额外参数（排除chainid，因为已经在前面添加了）
 	for key, value := range extraParams {
-		params = append(params, fmt.Sprintf("%s=%s", key, value))
+		if key != "chainid" {
+			params = append(params, fmt.Sprintf("%s=%s", key, value))
+		}
 	}
 
 	// API Key
@@ -113,7 +122,9 @@ func (config *APIEndpointConfig) SupportsTokenBalance() bool {
 
 // 获取API端点的显示名称
 func (config *APIEndpointConfig) GetDisplayName(endpoint string) string {
-	if strings.Contains(endpoint, "polygonscan.com") {
+	if strings.Contains(endpoint, "api.etherscan.io/v2") {
+		return "Etherscan V2 API"
+	} else if strings.Contains(endpoint, "polygonscan.com") {
 		return "PolygonScan API"
 	} else if strings.Contains(endpoint, "optimistic.etherscan.io") {
 		return "Optimism Etherscan API"
