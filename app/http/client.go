@@ -18,37 +18,49 @@ type HTTPClient struct {
 
 // NewHTTPClient 创建新的HTTP客户端，包含连接池和超时配置
 func NewHTTPClient() *HTTPClient {
-	// 从配置文件获取超时时间
+	// 从配置文件获取超时时间，针对Etherscan API优化
 	httpTimeout := time.Duration(config.GetHttpTimeout()) * time.Second
 
 	transport := &http.Transport{
-		// 连接池配置
-		MaxIdleConns:        100,              // 最大空闲连接数
-		MaxIdleConnsPerHost: 10,               // 每个主机的最大空闲连接数
-		MaxConnsPerHost:     50,               // 每个主机的最大连接数
-		IdleConnTimeout:     90 * time.Second, // 空闲连接超时时间
+		// 连接池配置 - 针对Etherscan API优化
+		MaxIdleConns:        50,                // 减少最大空闲连接数，避免触发限制
+		MaxIdleConnsPerHost: 5,                 // 每个主机的最大空闲连接数，避免被检测为爬虫
+		MaxConnsPerHost:     20,                // 每个主机的最大连接数，避免过多并发
+		IdleConnTimeout:     120 * time.Second, // 空闲连接超时时间
 
-		// 连接超时配置 - 增加超时时间以应对慢速API
+		// 连接超时配置 - 大幅增加超时时间以应对Etherscan API
 		DialContext: (&net.Dialer{
-			Timeout:   30 * time.Second, // 连接超时增加到30秒
-			KeepAlive: 30 * time.Second, // Keep-Alive时间
+			Timeout:   60 * time.Second, // 连接超时增加到60秒
+			KeepAlive: 60 * time.Second, // Keep-Alive时间增加
 		}).DialContext,
 
-		// TLS和HTTP配置 - 增加超时时间
-		TLSHandshakeTimeout:   20 * time.Second, // TLS握手超时增加到20秒
-		ResponseHeaderTimeout: 90 * time.Second, // 响应头超时时间增加到90秒
-		ExpectContinueTimeout: 1 * time.Second,
+		// TLS和HTTP配置 - 大幅增加超时时间
+		TLSHandshakeTimeout:   45 * time.Second,  // TLS握手超时增加到45秒
+		ResponseHeaderTimeout: 150 * time.Second, // 响应头超时时间增加到150秒
+		ExpectContinueTimeout: 2 * time.Second,
 
 		// 启用HTTP/2但允许降级到HTTP/1.1
 		ForceAttemptHTTP2: true,
 
-		// 禁用压缩以避免某些API的兼容性问题
+		// 启用压缩以模拟浏览器行为
 		DisableCompression: false,
+
+		// 禁用连接复用以避免被检测（针对Etherscan）
+		DisableKeepAlives: false, // 保持Keep-Alive，但限制连接数
 	}
 
 	client := &http.Client{
 		Transport: transport,
 		Timeout:   httpTimeout, // 使用配置的超时时间
+
+		// 自动处理重定向
+		CheckRedirect: func(req *http.Request, via []*http.Request) error {
+			// 最多允许10次重定向
+			if len(via) >= 10 {
+				return fmt.Errorf("重定向次数过多")
+			}
+			return nil
+		},
 	}
 
 	return &HTTPClient{client: client}

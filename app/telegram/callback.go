@@ -463,12 +463,12 @@ func getTronTRC20Balance(address, contract string) float64 {
 func requestAddress(baseUrl string, query string) []byte {
 	var url = baseUrl + "?" + query
 
-	// 设置请求头，模拟浏览器请求以提高成功率
+	// 设置完整的浏览器请求头，专门针对Etherscan API优化
 	headers := map[string]string{
-		"User-Agent":                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36 Edg/140.0.0.0",
-		"Accept":                    "application/json,text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-		"Accept-Language":           "zh-CN,zh;q=0.9,en;q=0.8",
-		"Accept-Encoding":           "gzip, deflate, br",
+		"User-Agent":                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+		"Accept":                    "application/json,text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8",
+		"Accept-Language":           "zh-CN,zh;q=0.9,en-US;q=0.8,en;q=0.7",
+		"Accept-Encoding":           "gzip, deflate, br, zstd",
 		"Cache-Control":             "no-cache",
 		"Connection":                "keep-alive",
 		"DNT":                       "1",
@@ -476,7 +476,12 @@ func requestAddress(baseUrl string, query string) []byte {
 		"Sec-Fetch-Mode":            "navigate",
 		"Sec-Fetch-Site":            "none",
 		"Sec-Fetch-User":            "?1",
+		"Sec-Ch-Ua":                 `"Not_A Brand";v="8", "Chromium";v="120", "Google Chrome";v="120"`,
+		"Sec-Ch-Ua-Mobile":          "?0",
+		"Sec-Ch-Ua-Platform":        `"Windows"`,
 		"Upgrade-Insecure-Requests": "1",
+		"Priority":                  "u=0, i",
+		"Pragma":                    "no-cache",
 	}
 
 	// 使用带重试机制的HTTP客户端
@@ -493,6 +498,12 @@ func requestAddress(baseUrl string, query string) []byte {
 		}
 	}
 	log.Info(fmt.Sprintf("请求ETH兼容链API: %s", maskedURL))
+
+	// 如果是Etherscan API，应用限流
+	if strings.Contains(url, "api.etherscan.io") {
+		log.Debug("应用Etherscan API限流...")
+		httpClient.WaitForEtherscan()
+	}
 
 	resp, err := client.Get(url, headers, maxRetries)
 	if err != nil {

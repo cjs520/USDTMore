@@ -901,6 +901,12 @@ func requestAddress(baseUrl string, query string) []byte {
 		"Upgrade-Insecure-Requests": "1",
 	}
 
+	// 如果是Etherscan API，应用限流
+	if strings.Contains(requestURL, "api.etherscan.io") {
+		log.Debug("应用Etherscan API限流...")
+		httpClient.WaitForEtherscan()
+	}
+
 	// 使用统一的HTTP客户端发送请求，包含重试机制
 	resp, err := httpClient.DefaultClient.Get(requestURL, headers, config.GetMaxRetries())
 	if err != nil {

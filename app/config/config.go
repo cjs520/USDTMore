@@ -24,7 +24,7 @@ const defaultPaymentMinAmount = 0.01        //
 const defaultPaymentMaxAmount = 99999       //
 
 // 网络请求配置常量
-const defaultHttpTimeout = 120 // HTTP请求默认超时时间（秒）- 增加到120秒
+const defaultHttpTimeout = 180 // HTTP请求默认超时时间（秒）- 针对Etherscan API增加到180秒
 const defaultMaxRetries = 3    // 默认最大重试次数
 const defaultRetryDelay = 2    // 默认重试延迟（秒）- 增加到2秒
 
