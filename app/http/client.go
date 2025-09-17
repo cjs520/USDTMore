@@ -208,7 +208,7 @@ func GetResponseBody(resp *http.Response) ([]byte, error) {
 	return body, nil
 }
 
-// WarmupEtherscanSession 预热Etherscan会话，获取必要的cookies
+// WarmupEtherscanSession 预热Etherscan会话，获取必要的cookies（特别是cf_clearance）
 func (c *HTTPClient) WarmupEtherscanSession(domain string) error {
 	c.sessionMutex.RLock()
 	if c.sessionWarmedUp[domain] {
@@ -227,11 +227,9 @@ func (c *HTTPClient) WarmupEtherscanSession(domain string) error {
 
 	log.Info(fmt.Sprintf("开始预热 %s 会话...", domain))
 
-	// 多步预热过程，模拟真实用户行为
+	// 优化预热过程，重点获取Cloudflare验证cookie
 	steps := []string{
-		fmt.Sprintf("https://%s", domain),      // 主页
-		fmt.Sprintf("https://%s/apis", domain), // API文档页面
-		fmt.Sprintf("https://%s/api", domain),  // API页面
+		fmt.Sprintf("https://%s", domain), // 主页 - 关键步骤，获取cf_clearance
 	}
 
 	for i, stepURL := range steps {
@@ -242,18 +240,31 @@ func (c *HTTPClient) WarmupEtherscanSession(domain string) error {
 			continue
 		}
 
-		// 设置浏览器头部，第一步用document模式，后续用navigate模式
-		if i == 0 {
-			c.setBrowserHeadersForDocument(req)
-		} else {
-			c.setBrowserHeadersForNavigate(req, steps[i-1])
-		}
+		// 使用与API请求相同的头部，确保一致性
+		c.setBrowserHeaders(req)
 
 		// 执行预热请求
 		resp, err := c.client.Do(req)
 		if err != nil {
 			log.Warn(fmt.Sprintf("预热请求失败 (步骤 %d): %v", i+1, err))
 			continue
+		}
+
+		// 检查是否获取到关键cookie
+		if c.client.Jar != nil {
+			u, _ := url.Parse(stepURL)
+			cookies := c.client.Jar.Cookies(u)
+			hasCfClearance := false
+			for _, cookie := range cookies {
+				if cookie.Name == "cf_clearance" {
+					hasCfClearance = true
+					log.Info(fmt.Sprintf("成功获取Cloudflare验证cookie: %s", cookie.Name))
+					break
+				}
+			}
+			if !hasCfClearance {
+				log.Warn("未获取到cf_clearance cookie，可能影响后续API请求")
+			}
 		}
 
 		// 读取响应体（模拟浏览器行为）
@@ -263,14 +274,9 @@ func (c *HTTPClient) WarmupEtherscanSession(domain string) error {
 			log.Warn(fmt.Sprintf("读取预热响应失败 (步骤 %d): %v", i+1, err))
 		}
 
-		// 步骤间等待，模拟用户浏览行为
-		if i < len(steps)-1 {
-			time.Sleep(1 * time.Second)
-		}
+		// 等待Cloudflare验证完成
+		time.Sleep(3 * time.Second)
 	}
-
-	// 最终等待
-	time.Sleep(2 * time.Second)
 
 	// 标记为已预热
 	c.sessionWarmedUp[domain] = true
@@ -331,30 +337,23 @@ func (c *HTTPClient) setBrowserHeadersForNavigate(req *http.Request, referer str
 
 // setBrowserHeaders 设置完整的浏览器特征头部
 func (c *HTTPClient) setBrowserHeaders(req *http.Request) {
-	// 修复API请求头部，完全模拟浏览器行为
+	// 完全匹配成功curl请求的头部
 	headers := map[string]string{
-		"User-Agent":         "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36",
-		"Accept":             "*/*", // 修复：使用更通用的Accept头部
-		"Accept-Language":    "zh-CN,zh;q=0.9,en;q=0.8",
-		"Accept-Encoding":    "gzip, deflate, br",
-		"DNT":                "1",
-		"Connection":         "keep-alive",
-		"Sec-Fetch-Dest":     "empty",
-		"Sec-Fetch-Mode":     "cors",
-		"Sec-Fetch-Site":     "cross-site", // 修复：API请求应该是cross-site
-		"Cache-Control":      "no-cache",
-		"Pragma":             "no-cache",
-		"sec-ch-ua":          `"Google Chrome";v="119", "Chromium";v="119", "Not?A_Brand";v="24"`,
-		"sec-ch-ua-mobile":   "?0",
-		"sec-ch-ua-platform": `"Windows"`,
-	}
-
-	// 为API请求添加Origin和Referer头部
-	if strings.Contains(req.URL.String(), "/api") {
-		u, _ := url.Parse(req.URL.String())
-		baseURL := fmt.Sprintf("https://%s", u.Host)
-		headers["Origin"] = baseURL
-		headers["Referer"] = baseURL + "/"
+		"User-Agent":                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36 Edg/140.0.0.0",
+		"Accept":                    "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7",
+		"Accept-Language":           "zh-CN,zh;q=0.9,en;q=0.8,en-GB;q=0.7,en-US;q=0.6",
+		"Accept-Encoding":           "gzip, deflate, br",
+		"DNT":                       "1",
+		"Cache-Control":             "max-age=0",
+		"Priority":                  "u=0, i",
+		"Sec-Fetch-Dest":            "document",
+		"Sec-Fetch-Mode":            "navigate",
+		"Sec-Fetch-Site":            "none",
+		"Sec-Fetch-User":            "?1",
+		"Upgrade-Insecure-Requests": "1",
+		"sec-ch-ua":                 `"Chromium";v="140", "Not=A?Brand";v="24", "Microsoft Edge";v="140"`,
+		"sec-ch-ua-mobile":          "?0",
+		"sec-ch-ua-platform":        `"Windows"`,
 	}
 
 	for key, value := range headers {
