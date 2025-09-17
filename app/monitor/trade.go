@@ -139,14 +139,33 @@ func TradeStart() {
 				var result gjson.Result
 				var err error
 
+				// 1. 首先查询区块链上的交易
 				result, err = getUsdtBscTransByBscScan(address)
 				if err != nil {
-					log.Error(fmt.Sprintf("[BSC] 查询交易失败 %s: %v", address, err))
-					continue
+					log.Error(fmt.Sprintf("[BSC] 查询区块链交易失败 %s: %v", address, err))
+				} else {
+					handlePaymentTransactionForBscScan(_lock, address, result)
+					handleOtherNotifyForBscScan(address, result)
 				}
 
-				handlePaymentTransactionForBscScan(_lock, address, result)
-				handleOtherNotifyForBscScan(address, result)
+				// 2. 检查币安内部转账（如果配置了币安API）
+				if CheckBinanceAPIStatus() {
+					binanceResult, binanceErr := getUSDTTransfersByBinanceAPI(address)
+					if binanceErr != nil {
+						log.Error(fmt.Sprintf("[BSC-Binance] 查询币安内部转账失败 %s: %v", address, binanceErr))
+					} else {
+						log.Info(fmt.Sprintf("[BSC-Binance] 成功查询币安内部转账: %s", address))
+						handleBinanceInternalTransfers(_lock, address, binanceResult)
+					}
+				} else {
+					// 检测可能的币安内部转账ID
+					for orderHash := range _lock {
+						if len(orderHash) > 8 && len(orderHash) < 15 {
+							CheckBinanceInternalTransfer(orderHash)
+							break // 只显示一次指南
+						}
+					}
+				}
 			}
 		}
 
