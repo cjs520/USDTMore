@@ -9,17 +9,15 @@
 ### 1. API端点优先级调整 (`app/config/api_endpoints.go`)
 
 **修正前：** 各链使用专用API作为主要端点，Etherscan V2作为备用
-**修正后：** 统一使用Etherscan V2 API作为主要端点，专用API作为备用
+**修正后：** 完全使用Etherscan V2 API，舍弃所有V1接口和专用API
 
 ```go
 // 修正后的配置示例
 case "POLY", "POLYGON":
     return &APIEndpointConfig{
-        Primary: "https://api.etherscan.io/v2/api", // V2 API作为主要端点
-        Fallbacks: []string{
-            "https://api.polygonscan.com/api", // 专用API作为备用
-        },
-        ChainID: "137",
+        Primary:   "https://api.etherscan.io/v2/api", // 完全使用Etherscan V2 API
+        Fallbacks: []string{},                        // 舍弃所有专用API
+        ChainID:   "137",
     }
 ```
 
@@ -88,10 +86,10 @@ Arbitrum: 42161
 - 简化配置管理
 - 降低维护成本
 
-### 2. 高可用性设计
-- 主要端点：Etherscan V2 API
-- 备用端点：各链专用API
-- 自动故障转移机制
+### 2. 统一API架构
+- 唯一端点：Etherscan V2 API
+- 统一接口：所有EVM链使用相同的API格式
+- 简化维护：无需管理多个API端点
 
 ### 3. 标准化参数格式
 - 统一的URL构建逻辑
@@ -103,7 +101,7 @@ Arbitrum: 42161
 ### 1. API调用格式验证
 ✅ 所有V2 API调用都包含正确的chainid参数
 ✅ 参数顺序符合V2 API要求
-✅ 保持与专用API的向后兼容性
+✅ 完全统一到V2 API架构
 
 ### 2. 功能测试
 ✅ ETH余额查询正常
@@ -112,7 +110,7 @@ Arbitrum: 42161
 ✅ 多链支持正常
 
 ### 3. 错误处理
-✅ API故障时自动切换到备用端点
+✅ 统一的V2 API调用格式
 ✅ 详细的错误日志记录
 ✅ 优雅的降级处理
 
@@ -121,14 +119,19 @@ Arbitrum: 42161
 ### 1. BSC链特殊处理
 BSC链继续使用专用的Web3提供商API，不受此次修正影响。
 
-### 2. API限制
+### 2. API架构简化
+- 完全舍弃V1接口和专用API
+- 统一使用Etherscan V2 API
+- 简化配置和维护复杂度
+
+### 3. API限制
 - Etherscan V2 API没有直接的代币余额查询端点
 - 通过tokentx端点获取交易记录来判断账户活跃度
 - 无法获取精确的当前代币余额
 
-### 3. 性能考虑
-- V2 API响应时间可能比专用API稍长
-- 已配置合适的超时时间和重试机制
+### 4. 性能考虑
+- 统一的API响应时间和行为
+- 已配置合适的超时时间（90秒）
 - 监控API调用频率以避免限制
 
 ## 后续优化建议
@@ -136,7 +139,7 @@ BSC链继续使用专用的Web3提供商API，不受此次修正影响。
 1. **监控API性能：** 定期检查V2 API的响应时间和成功率
 2. **余额查询优化：** 考虑集成专门的代币余额查询服务
 3. **缓存机制：** 实现API响应缓存以减少重复请求
-4. **错误统计：** 收集API错误统计数据以优化故障转移策略
+4. **错误处理：** 优化V2 API的错误处理和重试机制
 
 ## 修正文件清单
 
