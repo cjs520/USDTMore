@@ -1465,33 +1465,30 @@ func getUsdtBscTransByMoralis(_toAddress string) (gjson.Result, error) {
 	// 设置查询参数
 	params := url.Values{}
 	params.Add("chain", "bsc")
-	params.Add("token_addresses", config.GetBscExplorerContractAddress()) // 使用正确的参数名
+	params.Add("contract_addresses", config.GetBscExplorerContractAddress()) // 修正参数名
 	params.Add("limit", "50")
 	params.Add("order", "DESC") // 按时间倒序，获取最新交易
 
-	// 为了确保能查询到交易，暂时移除区块范围限制
-	// 根据实际情况，最新交易可能在很久之前的区块中
-	log.Info("[BSC-Moralis] 查询所有历史交易（无区块限制）- 确保能获取到数据")
-
-	// 注释掉区块范围限制，查询所有历史交易
-	/*
-		if config.GetBscMonitorMode() == "RECENT" {
-			// 获取当前区块高度并计算起始区块
-			currentBlock, err := getBscCurrentBlockNumber()
-			if err == nil {
-				// 扩大监控范围，确保不遗漏交易
-				blockRange := config.GetBscRecentBlockRange()
-				if blockRange < 10000 { // 扩大到10000个区块
-					blockRange = 10000
-				}
-				startBlock := currentBlock - int64(blockRange)
-				if startBlock > 0 {
-					params.Add("from_block", strconv.FormatInt(startBlock, 10))
-					log.Info(fmt.Sprintf("[BSC-Moralis] 监控区块范围: %d - %d (共%d个区块)", startBlock, currentBlock, blockRange))
-				}
+	// 扩大区块监控范围或移除限制以确保能查询到交易
+	if config.GetBscMonitorMode() == "RECENT" {
+		// 获取当前区块高度并计算起始区块 - 扩大范围到1000个区块
+		currentBlock, err := getBscCurrentBlockNumber()
+		if err == nil {
+			// 扩大监控范围到1000个区块，确保不遗漏交易
+			blockRange := config.GetBscRecentBlockRange()
+			if blockRange < 1000 {
+				blockRange = 1000 // 最小1000个区块
+			}
+			startBlock := currentBlock - int64(blockRange)
+			if startBlock > 0 {
+				params.Add("from_block", strconv.FormatInt(startBlock, 10))
+				log.Info(fmt.Sprintf("[BSC-Moralis] 监控区块范围: %d - %d (共%d个区块)", startBlock, currentBlock, blockRange))
 			}
 		}
-	*/
+	} else {
+		// 如果不是RECENT模式，不设置from_block，查询所有历史交易
+		log.Info("[BSC-Moralis] 查询所有历史交易（无区块限制）")
+	}
 
 	finalURL := requestURL + "?" + params.Encode()
 
@@ -1524,6 +1521,28 @@ func getUsdtBscTransByMoralis(_toAddress string) (gjson.Result, error) {
 	// 检查API响应是否包含错误
 	if result.Get("message").Exists() {
 		return gjson.Result{}, fmt.Errorf("[BSC-Moralis] API错误: %s", result.Get("message").String())
+	}
+
+	// 添加详细的调试信息
+	if result.Get("result").Exists() {
+		resultArray := result.Get("result").Array()
+		log.Info(fmt.Sprintf("[BSC-Moralis] 返回交易数量: %d", len(resultArray)))
+
+		// 显示最新的几笔交易信息用于调试
+		for i, tx := range resultArray {
+			if i >= 5 { // 显示前5笔交易
+				break
+			}
+			blockTime := tx.Get("block_timestamp").String()
+			value := tx.Get("value_decimal").String()
+			txHash := tx.Get("transaction_hash").String()
+			fromAddr := tx.Get("from_address").String()
+			toAddr := tx.Get("to_address").String()
+			log.Info(fmt.Sprintf("[BSC-Moralis] 交易%d: 时间=%s, 金额=%s USDT, 从=%s, 到=%s, 哈希=%s",
+				i+1, blockTime, value, fromAddr[:10]+"...", toAddr[:10]+"...", txHash[:10]+"..."))
+		}
+	} else {
+		log.Warn(fmt.Sprintf("[BSC-Moralis] API响应中没有result字段，完整响应: %s", string(body)))
 	}
 
 	// 记录原始响应（用于调试）
