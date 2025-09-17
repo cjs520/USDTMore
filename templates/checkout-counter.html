@@ -67,18 +67,38 @@
 <script src="/js/clipboard.min.js"></script>
 <script src="https://cdn.bootcdn.net/ajax/libs/layer/3.1.1/layer.js"></script>
 <script>
-    let expire = {{.expire}};
+    // 使用服务器时间戳进行精确倒计时
+    const expiredAt = {{.expired_at}};  // 过期时间戳（毫秒）
+    const serverTime = {{.server_time}}; // 服务器时间戳（毫秒）
+    const clientTime = Date.now();       // 客户端时间戳（毫秒）
+    
+    // 计算服务器与客户端的时间差
+    const timeDiff = serverTime - clientTime;
+    
+    console.log('倒计时调试信息:', {
+        expiredAt: new Date(expiredAt),
+        serverTime: new Date(serverTime), 
+        clientTime: new Date(clientTime),
+        timeDiff: timeDiff + 'ms'
+    });
 
-    // 支付时间倒计时
+    // 支付时间倒计时 - 基于实时计算，避免累积误差
     function clock() {
-        let totalSeconds = --expire;
-        if (totalSeconds <= 0) {
+        // 获取当前客户端时间并校正为服务器时间
+        const currentTime = Date.now() + timeDiff;
+        const remainingMs = expiredAt - currentTime;
+        
+        if (remainingMs <= 0) {
+            $('.hours').text('00');
+            $('.minutes').text('00'); 
+            $('.seconds').text('00');
             return layer.alert("支付超时，请重新发起支付！", {icon: 5});
         }
 
-        let hours = Math.floor(totalSeconds / 3600);
-        let minutes = Math.floor((totalSeconds % 3600) / 60);
-        let seconds = totalSeconds % 60;
+        const totalSeconds = Math.floor(remainingMs / 1000);
+        const hours = Math.floor(totalSeconds / 3600);
+        const minutes = Math.floor((totalSeconds % 3600) / 60);
+        const seconds = totalSeconds % 60;
 
         $('.hours').text(hours.toString().padStart(2, '0'));
         $('.minutes').text(minutes.toString().padStart(2, '0'));
